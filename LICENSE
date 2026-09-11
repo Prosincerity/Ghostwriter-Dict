@@ -1,0 +1,27 @@
+Ghostwriter Dictionary Data - Licensing
+========================================
+
+This repository contains materials under two separate licenses.
+
+1. CODE
+
+The original source code, shell scripts, tests, and other software-specific
+files in this repository are licensed under the MIT License. See
+LICENSE-CODE for the complete terms.
+
+2. DATA
+
+Downloaded, extracted, transformed, and distributed Wiktionary/Kaikki
+dictionary data, including generated wordlists and SQLite databases containing
+that data, is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0). See LICENSE-DATA.md for the license
+notice, attribution, modification statement, and canonical legal text link.
+
+Documentation that contains or describes substantial portions of the dataset
+is covered by CC BY-SA 4.0 to that extent. Original documentation and code
+examples that do not contain dataset content are licensed under MIT.
+
+No MIT license grant applies to the Wiktionary/Kaikki-derived data. No CC
+BY-SA license requirement is intended to apply to independently written
+software merely because it reads the separately distributed data, except to
+the extent required by applicable law or the CC BY-SA 4.0 license itself.
