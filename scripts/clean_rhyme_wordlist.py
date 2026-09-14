@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import unicodedata
 from collections import Counter
@@ -14,21 +15,24 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
 
 
-POLICY_VERSION = "rhyme-cleanup-v2"
+POLICY_VERSION = "rhyme-cleanup-v3"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
 HEADWORD_CONNECTORS = frozenset("-'")
-HEADWORD_ALPHABETS = {
-    "en": frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
-    "de": frozenset(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÄÖÜäöüßẞ0123456789"
-    ),
-    "tr": frozenset(
+TURKISH_PRODUCT_ALPHABET = frozenset(
         "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
         "abcçdefgğhıijklmnoöprsştuüvyz"
-        "0123456789"
-    ),
-}
+        "ÂâÎîÛûQqWwXx"
+)
+BLOCKED_LATIN_LETTERS = frozenset("ǀǁǂǃꝚꝛ")
+HEADWORD_TRANSLATION = str.maketrans(
+    {
+        "’": "'", "‘": "'", "ʼ": "'",
+        "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "−": "-",
+        "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+        "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+    }
+)
 
 
 class ProgressBar:
@@ -69,23 +73,52 @@ def output_paths(output_path: Path) -> dict[str, Path]:
         "rejected": stem.with_name(f"{stem.name}_rejected.jsonl"),
         "rejected_words": stem.with_name(f"{stem.name}_rejected_words.jsonl"),
         "changes": stem.with_name(f"{stem.name}_changes.jsonl"),
+        "word_changes": stem.with_name(f"{stem.name}_word_changes.jsonl"),
         "report": stem.with_name(f"{stem.name}_report.json"),
     }
 
 
+def normalize_headword(word: str) -> tuple[str, list[str]]:
+    transformations: list[str] = []
+    normalized = word
+    if "\N{SOFT HYPHEN}" in normalized:
+        normalized = normalized.replace("\N{SOFT HYPHEN}", "")
+        transformations.append("remove_soft_hyphen")
+    translated = normalized.translate(HEADWORD_TRANSLATION)
+    if translated != normalized:
+        if any(character in word for character in "’‘ʼ"):
+            transformations.append("normalize_apostrophe")
+        if any(character in word for character in "‐‑‒–—−"):
+            transformations.append("normalize_dash")
+        if any(character in word for character in "₀₁₂₃₄₅₆₇₈₉"):
+            transformations.append("normalize_subscript_digit")
+    return unicodedata.normalize("NFC", translated), transformations
+
+
+def is_product_alphanumeric(character: str, lang_code: str) -> bool:
+    if character in "0123456789":
+        return True
+    if lang_code == "tr":
+        return character in TURKISH_PRODUCT_ALPHABET
+    return (
+        character not in BLOCKED_LATIN_LETTERS
+        and unicodedata.category(character).startswith("L")
+        and unicodedata.name(character, "").startswith("LATIN")
+    )
+
+
 def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]:
-    """Describe a product-ineligible headword, or return ``None``."""
-    alphabet = HEADWORD_ALPHABETS[lang_code]
+    """Describe a normalized product-ineligible headword, or return ``None``."""
     invalid = Counter()
     for index, character in enumerate(word):
-        if character in alphabet:
+        if is_product_alphanumeric(character, lang_code):
             continue
         connector_is_internal = (
             character in HEADWORD_CONNECTORS
             and index > 0
             and index + 1 < len(word)
-            and word[index - 1] in alphabet
-            and word[index + 1] in alphabet
+            and is_product_alphanumeric(word[index - 1], lang_code)
+            and is_product_alphanumeric(word[index + 1], lang_code)
         )
         if not connector_is_internal:
             invalid[character] += 1
@@ -262,25 +295,49 @@ def clean_wordlist(
     part_paths = {
         name: path.with_name(f"{path.name}.part") for name, path in paths.items()
     }
+    staging_path = output_path.with_name(f"{output_path.name}.rows.part")
     for path in part_paths.values():
         path.unlink(missing_ok=True)
+    staging_path.unlink(missing_ok=True)
 
     counts = Counter()
     rejection_reasons: Counter[str] = Counter()
     word_rejection_reasons: Counter[str] = Counter()
     transformation_reasons: Counter[str] = Counter()
+    word_transformation_reasons: Counter[str] = Counter()
     bytes_processed = 0
     progress = ProgressBar(input_path.stat().st_size)
+    staging: Optional[sqlite3.Connection] = None
 
     try:
+        staging = sqlite3.connect(staging_path)
+        staging.execute("PRAGMA journal_mode = OFF")
+        staging.execute("PRAGMA synchronous = OFF")
+        staging.executescript(
+            """
+            CREATE TABLE words (
+                word TEXT PRIMARY KEY,
+                position INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            CREATE TABLE pronunciations (
+                word TEXT NOT NULL,
+                ipa TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (word, ipa)
+            ) WITHOUT ROWID;
+            """
+        )
+        pronunciation_position = 0
         with (
             input_path.open("r", encoding="utf-8") as source,
-            part_paths["wordlist"].open("w", encoding="utf-8", newline="\n") as output,
             part_paths["rejected"].open("w", encoding="utf-8", newline="\n") as rejected,
             part_paths["rejected_words"].open(
                 "w", encoding="utf-8", newline="\n"
             ) as rejected_words,
             part_paths["changes"].open("w", encoding="utf-8", newline="\n") as changes,
+            part_paths["word_changes"].open(
+                "w", encoding="utf-8", newline="\n"
+            ) as word_changes,
         ):
             for line_number, line in enumerate(source, start=1):
                 bytes_processed += len(line.encode("utf-8"))
@@ -289,10 +346,26 @@ def clean_wordlist(
                 counts["input_pronunciations"] += len(ipas)
                 eligible: list[str] = []
 
-                word_rejection = headword_rejection(word, lang_code)
+                normalized_word, word_transformations = normalize_headword(word)
+                if word_transformations:
+                    write_json_line(
+                        word_changes,
+                        {
+                            "ipas": ipas,
+                            "normalized_word": normalized_word,
+                            "original_word": word,
+                            "policy_version": POLICY_VERSION,
+                            "transformations": word_transformations,
+                        },
+                    )
+                    counts["transformed_words"] += 1
+                    word_transformation_reasons.update(word_transformations)
+
+                word_rejection = headword_rejection(normalized_word, lang_code)
                 if word_rejection:
                     word_row = {
                         "ipas": ipas,
+                        "normalized_word": normalized_word,
                         "policy_version": POLICY_VERSION,
                         "reason": word_rejection["reason"],
                         "details": word_rejection["details"],
@@ -307,6 +380,7 @@ def clean_wordlist(
                             {
                                 "details": word_rejection["details"],
                                 "ipa": ipa,
+                                "normalized_word": normalized_word,
                                 "policy_version": POLICY_VERSION,
                                 "reason": word_rejection["reason"],
                                 "word": word,
@@ -348,25 +422,65 @@ def clean_wordlist(
 
                 eligible = list(dict.fromkeys(eligible))
                 if eligible:
-                    encoded = json.dumps(
-                        eligible, ensure_ascii=False, separators=(",", ":")
+                    staging.execute(
+                        "INSERT OR IGNORE INTO words VALUES (?, ?)",
+                        (normalized_word, line_number),
                     )
-                    output.write(f"{word}\t{encoded}\n")
-                    counts["eligible_words"] += 1
-                    counts["eligible_pronunciations"] += len(eligible)
+                    for ipa in eligible:
+                        pronunciation_position += 1
+                        staging.execute(
+                            "INSERT OR IGNORE INTO pronunciations VALUES (?, ?, ?)",
+                            (normalized_word, ipa, pronunciation_position),
+                        )
+                    counts["eligible_input_words"] += 1
                 else:
                     counts["omitted_words"] += 1
                 if line_number % 1_000 == 0:
                     progress.update(
                         bytes_processed,
                         counts["input_words"],
-                        counts["eligible_words"],
+                        counts["eligible_input_words"],
                     )
             progress.update(
                 input_path.stat().st_size,
                 counts["input_words"],
-                counts["eligible_words"],
+                counts["eligible_input_words"],
             )
+
+        staging.commit()
+        counts["eligible_words"] = staging.execute(
+            "SELECT COUNT(*) FROM words"
+        ).fetchone()[0]
+        counts["eligible_pronunciations"] = staging.execute(
+            "SELECT COUNT(*) FROM pronunciations"
+        ).fetchone()[0]
+        with part_paths["wordlist"].open(
+            "w", encoding="utf-8", newline="\n"
+        ) as output:
+            current_word = None
+            current_ipas: list[str] = []
+            rows = staging.execute(
+                "SELECT words.word, pronunciations.ipa "
+                "FROM words JOIN pronunciations USING (word) "
+                "ORDER BY words.position, pronunciations.position"
+            )
+            for staged_word, ipa in rows:
+                if current_word is not None and staged_word != current_word:
+                    encoded = json.dumps(
+                        current_ipas, ensure_ascii=False, separators=(",", ":")
+                    )
+                    output.write(f"{current_word}\t{encoded}\n")
+                    current_ipas = []
+                current_word = staged_word
+                current_ipas.append(ipa)
+            if current_word is not None:
+                encoded = json.dumps(
+                    current_ipas, ensure_ascii=False, separators=(",", ":")
+                )
+                output.write(f"{current_word}\t{encoded}\n")
+        staging.close()
+        staging = None
+        staging_path.unlink()
 
         report: dict[str, object] = {
             "counts": dict(sorted(counts.items())),
@@ -379,18 +493,27 @@ def clean_wordlist(
                 sorted(word_rejection_reasons.items())
             ),
             "transformation_reasons": dict(sorted(transformation_reasons.items())),
+            "word_transformation_reasons": dict(
+                sorted(word_transformation_reasons.items())
+            ),
         }
         with part_paths["report"].open(
             "w", encoding="utf-8", newline="\n"
         ) as report_file:
             json.dump(report, report_file, ensure_ascii=False, indent=2, sort_keys=True)
             report_file.write("\n")
-        for name in ("wordlist", "rejected", "rejected_words", "changes", "report"):
+        for name in (
+            "wordlist", "rejected", "rejected_words", "changes",
+            "word_changes", "report",
+        ):
             os.replace(part_paths[name], paths[name])
         return report
     except BaseException:
+        if staging is not None:
+            staging.close()
         for path in part_paths.values():
             path.unlink(missing_ok=True)
+        staging_path.unlink(missing_ok=True)
         raise
     finally:
         progress.finish()
@@ -410,14 +533,21 @@ def main() -> None:
     args = parse_args()
     try:
         report = clean_wordlist(args.input, args.output, args.lang_code)
-    except (FileNotFoundError, OSError, UnicodeError, ValueError) as error:
+    except (
+        FileNotFoundError,
+        OSError,
+        sqlite3.Error,
+        UnicodeError,
+        ValueError,
+    ) as error:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from error
     counts = report["counts"]
     print(f"Cleanup policy       : {POLICY_VERSION}")
     print(f"Input words          : {counts.get('input_words', 0):,}")
     print(f"Input pronunciations : {counts.get('input_pronunciations', 0):,}")
-    print(f"Eligible words       : {counts.get('eligible_words', 0):,}")
+    print(f"Eligible input words : {counts.get('eligible_input_words', 0):,}")
+    print(f"Unique output words  : {counts.get('eligible_words', 0):,}")
     print(f"Eligible IPA         : {counts.get('eligible_pronunciations', 0):,}")
     print(f"Omitted words        : {counts.get('omitted_words', 0):,}")
     print(f"Rejected candidates  : {counts.get('rejected_candidates', 0):,}")
