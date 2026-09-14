@@ -101,12 +101,14 @@ variant is rejected, and omit the word only when no variants survive.
 The cleanup policy is versioned as `rhyme-cleanup-v2` and must be recorded in
 its report and database release metadata. It currently:
 
-- requires the complete headword to contain only that language's standard
-  alphabet plus ASCII digits: `A-Z/a-z` for English; `A-Z/a-z`, umlauts, and
-  `ß`/`ẞ` for German; and the 29 Turkish letters for Turkish. This deliberately
-  excludes whitespace, combining forms, all hyphens and apostrophes, Braille,
-  dotted-circle notation, enclosed letters, symbols, and emoji from the
-  product dictionary while preserving them in the canonical wordlists;
+- requires the complete headword to consist of alphanumeric segments using
+  that language's standard alphabet plus ASCII digits: `A-Z/a-z` for English;
+  `A-Z/a-z`, umlauts, and `ß`/`ẞ` for German; and the 29 Turkish letters for
+  Turkish. Single ASCII hyphens and apostrophes may connect segments, so
+  `state-of-the-art` and `7'nci` remain eligible. Whitespace, leading/trailing
+  or repeated connectors, Braille, dotted-circle notation, enclosed letters,
+  other symbols, and emoji are excluded from the product dictionary while
+  remaining in the canonical wordlists;
 - splits unambiguous `~` pronunciation alternatives;
 - expands balanced, non-nested optional groups such as `(ː)`, with a strict
   maximum of eight generated variants;
