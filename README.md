@@ -341,6 +341,32 @@ The builder reports malformed input and unknown IPA symbols, prints single-line
 progress and summary statistics, creates indexes after its bulk insert, and
 atomically replaces the destination only after a successful build.
 
+### Deterministic integration smoke test
+
+The opt-in smoke runner takes a deterministic, broadly distributed sample from
+each real wordlist, builds a database, checks its schema and indexes, runs
+`PRAGMA integrity_check`, and records counts in a manifest. It is intentionally
+separate from the lightweight automated suite. Run it only after those tests
+pass:
+
+```bash
+python3 test/scripts/run_rhyme_smoke_test.py \
+  --sample-size 50000 \
+  --release-version kaikki-en20260902-de20260901-tr20260901
+```
+
+The default seed selects the 50,000 rows with the lowest deterministic BLAKE2b
+scores for each language. This avoids the alphabetical bias of contiguous
+chunks and produces the same sample whenever the source rows, seed, and release
+are unchanged. If a wordlist contains fewer rows, all its rows are selected.
+Use `--source espeak` to test eSpeak wordlists and repeat `--source` to test
+both sources.
+
+Generated samples are stored in `test/out/samples/`, databases in
+`test/out/databases/`, and build details in `test/out/smoke_manifest.json`.
+The complete `test/out/` tree is ignored by Git because it contains generated,
+CC BY-SA dictionary data and should be regenerated for each release.
+
 ### Known rhyme-matching limitation
 
 The database does not suppress identity rhymes created by compounds. German
