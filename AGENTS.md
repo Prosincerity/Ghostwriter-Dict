@@ -110,11 +110,18 @@ the pronunciation provenance remains identifiable.
 
 ## SQLite rhyme indexes
 
-Build one database per language and pronunciation source: `en.db`,
-`en_espeak.db`, `de.db`, `de_espeak.db`, `tr.db`, and `tr_espeak.db`. Keeping
-the sources separate preserves pronunciation provenance and permits each file
-to be shipped independently. Do not add a `language` column; the filename
-identifies the language and source.
+Build one database per language and pronunciation source, with the Kaikki
+release encoded in every filename. Because each wordlist merges three
+Wiktionary editions, use a composite release slug containing the English,
+German, and Turkish edition dump dates, for example
+`en_kaikki-en20260902-de20260901-tr20260901.db` and
+`en_espeak_kaikki-en20260902-de20260901-tr20260901.db`.
+Keeping the sources separate preserves pronunciation provenance and permits
+each file to be shipped independently. An eSpeak database inherits the Kaikki
+release version of the no-IPA wordlist used as its input. Do not add a
+`language` or release column; the filename identifies the language, source,
+and release. Never label an output with a release that cannot be traced to the
+source archives' recorded Kaikki metadata.
 
 Each database uses this exact schema:
 

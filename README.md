@@ -254,9 +254,11 @@ python3 -B -m unittest discover -s tests -v
 
 The tests cover routing by `lang_code`, merging all editions, cross-dump
 deduplication, multiple IPA variants, missing IPA, junk IPA removal,
-audio-specific IPA, slang/emoji retention, non-Latin headword rejection, and
-eSpeak output parsing. The eSpeak test uses a temporary fake executable, so
-eSpeak NG does not need to be installed to run the tests.
+audio-specific IPA, slang/emoji retention, non-Latin headword rejection,
+eSpeak output parsing, language-specific phoneme tokenization, stress-anchored
+rhyme keys, vowel-only assonance keys, and end-to-end SQLite builds. All
+fixtures are synthetic, and the eSpeak test uses a temporary fake executable,
+so real datasets and eSpeak NG are not required.
 
 ## SQLite rhyme indexes
 
@@ -265,26 +267,41 @@ source so provenance remains explicit and each database can be distributed
 independently:
 
 ```text
-out/en.db
-out/en_espeak.db
-out/de.db
-out/de_espeak.db
-out/tr.db
-out/tr_espeak.db
+out/en_kaikki-en20260902-de20260901-tr20260901.db
+out/en_espeak_kaikki-en20260902-de20260901-tr20260901.db
+out/de_kaikki-en20260902-de20260901-tr20260901.db
+out/de_espeak_kaikki-en20260902-de20260901-tr20260901.db
+out/tr_kaikki-en20260902-de20260901-tr20260901.db
+out/tr_espeak_kaikki-en20260902-de20260901-tr20260901.db
 ```
+
+Replace the example dates with the Wiktionary dump dates recorded by Kaikki
+for the three source archives used to make the wordlists. All three dates are
+included because every output language is merged across all three Wiktionary
+editions. The builder requires `--release-version` and refuses an output
+filename that does not contain that value. Do not guess a missing release;
+retain the archive metadata needed to trace the version. An eSpeak database
+uses the same release version as its source no-IPA wordlist: although eSpeak
+supplies its pronunciations, its word set still comes from that Kaikki release.
 
 Run the builder once for each desired input, passing its language explicitly:
 
 ```bash
 python3 scripts/generate_rhyme_db.py \
-  out/wordlist_en_ipa.txt out/en.db --lang-code en
+  out/wordlist_en_ipa.txt \
+  out/en_kaikki-en20260902-de20260901-tr20260901.db \
+  --lang-code en \
+  --release-version kaikki-en20260902-de20260901-tr20260901
 python3 scripts/generate_rhyme_db.py \
-  out/wordlist_en_espeak_ipa.txt out/en_espeak.db --lang-code en
+  out/wordlist_en_espeak_ipa.txt \
+  out/en_espeak_kaikki-en20260902-de20260901-tr20260901.db \
+  --lang-code en \
+  --release-version kaikki-en20260902-de20260901-tr20260901
 ```
 
 Each JSON-array pronunciation is expanded into a separate `(word, ipa)` row.
 Every database has the same schema; its filename, rather than a database
-column, identifies the language and pronunciation source:
+column, identifies the language, pronunciation source, and Kaikki release:
 
 ```sql
 CREATE TABLE dictionary (
@@ -304,7 +321,10 @@ CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 IPA is tokenized with a language-specific phoneme inventory so affricates,
 length marks, and diacritics remain attached to the correct phoneme. The
 complete token sequence is reversed and space-delimited in `ipa_reversed`,
-turning pronunciation-tail searches into indexable prefix searches.
+turning pronunciation-tail searches into indexable prefix searches. For
+SQLite `LIKE 'prefix%'` queries against these binary indexes, enable
+`PRAGMA case_sensitive_like = ON` on the querying connection so the query
+planner can use the prefix range without changing capitalization semantics.
 
 `rhyme_key_reversed` contains the reversed sequence from the vowel following
 the last primary stress marker (`ˈ`) through the end of the pronunciation.
@@ -348,9 +368,12 @@ The processed data is derived from English Wiktionary, German Wiktionary, and
 Turkish Wiktionary contributors using Kaikki.org and Wiktextract. The data is
 modified by language filtering, merging, Unicode normalization,
 deduplication, non-Latin headword filtering, IPA extraction, and invalid IPA
-removal. Pronunciations generated locally with eSpeak NG are identified by the
-`wordlist_<language>_espeak_ipa.txt` filenames. Other dataset additions must be
-documented in this section and must use terms compatible with CC BY-SA 4.0.
+removal. SQLite releases additionally expand pronunciation arrays, tokenize
+IPA, and derive indexed reversed rhyme and assonance keys. Pronunciations
+generated locally with eSpeak NG are identified by the
+`wordlist_<language>_espeak_ipa.txt` and versioned `*_espeak_*.db` filenames.
+Other dataset additions must be documented in this section and must use terms
+compatible with CC BY-SA 4.0.
 
 See [LICENSE](LICENSE) for the repository-wide licensing map and
 [LICENSE-DATA.md](LICENSE-DATA.md) for the required data attribution notice.
