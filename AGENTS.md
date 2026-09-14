@@ -1,181 +1,115 @@
 # AGENTS.md
 
-## Project purpose
+## Purpose and layout
 
-This repository builds English, German, and Turkish word/pronunciation data for
-the Ghostwriter application. It downloads Kaikki/Wiktextract JSONL dumps,
-extracts and deduplicates Wiktionary pronunciations, generates missing IPA with
-eSpeak NG, and builds versioned SQLite rhyme indexes.
+This repository builds English, German, and Turkish pronunciation data for
+Ghostwriter from Kaikki/Wiktextract, fills missing IPA with eSpeak NG, cleans
+the data for product use, and creates versioned SQLite rhyme indexes. Read
+`README.md` before substantial changes.
 
-Read `README.md` before making substantial changes.
+- `scripts/download_and_process.sh`: update Kaikki archives and extract IPA.
+- `scripts/extract_ipa.py`: merge languages across dumps and write canonical
+  Wiktionary IPA/no-IPA lists.
+- `scripts/generate_espeak_ipa.py`: generate IPA for no-IPA words.
+- `scripts/clean_rhyme_wordlist.py`: create audited rhyme-eligible lists.
+- `scripts/generate_rhyme_db.py`: build per-language, per-source SQLite files.
+- `tests/`: small synthetic tests; `tests/scripts/run_rhyme_smoke_test.py` is
+  the opt-in deterministic real-data smoke test.
+- `raw/`: large archives and ETag sidecars.
+- `out/<lang>/`: generated wordlists, reports, databases, and smoke artifacts.
 
-## Repository layout
+## Safety and implementation conventions
 
-- `scripts/download_and_process.sh` checks Kaikki `ETag` values, downloads or
-  updates the current raw archives, and runs the Wiktionary extractor.
-- `scripts/extract_ipa.py` merges selected language entries from all supplied
-  dumps and creates Wiktionary IPA/no-IPA wordlists.
-- `scripts/generate_espeak_ipa.py` calls eSpeak NG for words without a
-  Wiktionary pronunciation.
-- `scripts/clean_rhyme_wordlist.py` creates product-filtered, rhyme-eligible
-  wordlists while preserving canonical inputs and writing audit logs.
-- `scripts/generate_rhyme_db.py` builds per-language, per-source SQLite rhyme
-  indexes from the pronunciation wordlists.
-- `tests/` contains synthetic tests that do not require the real datasets or an
-  installed eSpeak NG binary.
-- `tests/scripts/run_rhyme_smoke_test.py` creates deterministic local samples
-  and validates sampled databases below `out/<lang>/`.
-- `raw/` contains multi-gigabyte source archives and HTTP `ETag` sidecars.
-- `out/<lang>/` contains that language's generated wordlists, SQLite databases,
-  and optional smoke-test artifacts.
+- Do not inspect, search, print, hash, or copy `raw/` or `out/` unless the user
+  explicitly requests it. Exclude both from recursive searches.
+- Stream `.jsonl.gz` archives; never decompress them to disk.
+- Do not commit `raw/`, `out/`, partial files, generated data, or Python caches.
+- Keep only current raw archives and wordlists. Only finished SQLite releases
+  are intended for versioning.
+- Validate changes with synthetic fixtures, not the full pipeline, unless the
+  user explicitly requests a real build or audit.
+- Use the Python standard library; no third-party Python dependencies.
+- Resolve repository paths relative to scripts so commands work from any CWD.
+- Write downloads and generated artifacts through `.part` files, then replace
+  atomically. Failures must preserve the previous complete artifact.
+- Long operations use a single updating progress line. Extraction reports
+  compressed bytes, records, and unique words without a pre-count pass; eSpeak
+  reports exact processed/total words.
 
-## Large-file safety
+## Canonical extraction rules
 
-- Do not read, search, print, hash, copy, or inspect files under `raw/` or
-  `out/` unless the user explicitly asks for that operation.
-- Never use unrestricted recursive searches that can enter `raw/` or `out/`.
-  Use exclusions such as `rg -g '!raw/**' -g '!out/**'`.
-- Do not decompress the Kaikki archives to disk. Process `.jsonl.gz` files as
-  streams.
-- Do not commit `raw/`, `out/`, partial downloads, generated wordlists, or
-  local Python caches.
-- Tests must use small synthetic fixtures in temporary directories.
-- Do not run the full download or extraction pipeline merely to validate a code
-  change. Use the test suite unless the user explicitly requests a real build.
-- Keep only the current raw archives and current outputs. Do not introduce raw
-  or wordlist release archives; only the finished SQLite database is intended
-  to be versioned.
+- Search every supplied Wiktionary dump for every requested language. Route
+  only by top-level `lang_code` (`en`, `de`, `tr`), never human-readable `lang`.
+- Normalize words and IPA to Unicode NFC before deduplication; capitalization
+  is significant.
+- Canonical lists preserve slang, phrases, punctuation, digits, and emoji.
+  `--latin-headwords-only` rejects non-Latin letters but is not an
+  alphabet-only product filter.
+- Read `sounds[].ipa` and `sounds[].audio-ipa`; retain distinct variants and
+  remove exact duplicates.
+- Reject empty IPA and complete placeholders such as `[...]`, `[…]`, `?`,
+  `/.../`, and `/…/`. Valid square-bracket and slash delimiters remain.
+- Preserve eSpeak's adaptive batch isolation: anomalous multi-line output must
+  not shift later pronunciations.
 
-## Data-routing rules
-
-- A Wiktionary edition is not a language filter. Search every supplied dump for
-  every requested language.
-- Route entries exclusively by the top-level Wiktextract `lang_code` field:
-  `en`, `de`, or `tr`.
-- Do not route using the human-readable `lang` field.
-- Preserve slang, internet language, abbreviations, phrases, punctuation,
-  digits, and emoji.
-- The current English/German/Turkish build rejects headwords containing
-  non-Latin letters to remove incorrectly tagged Arabic, Cyrillic, Greek, and
-  CJK entries. Do not replace this with an alphabet-only filter.
-- Normalize words and IPA to Unicode NFC before deduplication.
-- Treat capitalization as significant.
-
-## Wordlist formats
-
-Wiktionary IPA files are named:
+Canonical IPA files use one UTF-8 TSV row per word and a compact JSON array:
 
 ```text
-out/en/wordlist_en_ipa.txt
-out/de/wordlist_de_ipa.txt
-out/tr/wordlist_tr_ipa.txt
-```
-
-They contain exactly one UTF-8 TSV row per word. The second field is a compact
-JSON array containing all unique pronunciations:
-
-```text
+out/<lang>/wordlist_<lang>_ipa.txt
+out/<lang>/wordlist_<lang>_espeak_ipa.txt
 hammer\t["/ˈhæmə/","/ˈhæmɚ/"]
 ```
 
-Do not change this to repeated word rows or a custom IPA delimiter.
+Do not replace the JSON array with repeated word rows or a custom IPA
+delimiter.
 
-Missing-IPA files are named `out/<lang>/wordlist_<lang>_noipa.txt` and contain
-one unique word per line. A word belongs there only if no supplied dump
-provides usable IPA for it.
-
-eSpeak-generated files are named
-`out/<lang>/wordlist_<lang>_espeak_ipa.txt` and use the same
-one-word/JSON-array TSV format. Keep them separate from Wiktionary IPA so the
-pronunciation provenance remains identifiable.
+`out/<lang>/wordlist_<lang>_noipa.txt` contains one unique word per line only
+when no supplied dump provides usable IPA. Keep Wiktionary and eSpeak outputs
+separate to preserve provenance.
 
 ## Rhyme-product cleanup
 
-Canonical Wiktionary and eSpeak wordlists remain lossless inputs. Apply product
-cleanup only in a separate stage before SQLite generation. Cleaned files are
-named `wordlist_<lang>_rhyme_eligible.txt` and
-`wordlist_<lang>_espeak_rhyme_eligible.txt` in `out/<lang>/`. Process each
-pronunciation independently: keep usable variants for a word even when another
-variant is rejected, and omit the word only when no variants survive.
+Never modify canonical lists in place. `rhyme-cleanup-v3` creates
+`wordlist_<lang>_rhyme_eligible.txt` or
+`wordlist_<lang>_espeak_rhyme_eligible.txt` and applies these rules:
 
-The cleanup policy is versioned as `rhyme-cleanup-v3` and must be recorded in
-its report and database release metadata. It currently:
+- English and German allow Latin-script letters, accents, and ligatures except
+  click letters `ǀǁǂǃ` and r rotunda `ꝛ`/`Ꝛ`. Turkish allows its 29 letters,
+  `ÂâÎîÛû`, and `QqWwXx`. All languages allow ASCII digits.
+- Normalize `’`, `‘`, and `ʼ` to `'`; Unicode dash connectors to `-`;
+  subscript digits to ASCII; and remove soft hyphens.
+- The normalized headword must contain alphanumeric segments joined only by a
+  single internal `-` or `'`. Reject spaces, edge/repeated connectors, Braille,
+  dotted-circle notation, enclosed letters, other symbols, and emoji.
+- Split unambiguous `~` IPA alternatives; expand balanced non-nested optional
+  groups to at most eight variants; normalize IPA `'` to `ˈ` and `·` to `.`.
+- Reject IPA containing controls, incomplete ellipses, ambiguous commas,
+  malformed delimiters, mixed uppercase/SAMPA or orthographic notation, Greek
+  `α`/`ε`, Turkish dotless `ı`, or remaining unknown tokens.
+- Validate each pronunciation independently. Keep valid siblings and omit a
+  word only if none survive. Merge and deduplicate IPA when normalized
+  headwords collide.
 
-- permits Latin-script letters, including accented letters and ligatures, for
-  English and German loanwords. The click letters `ǀǁǂǃ` and r rotunda `ꝛ`/`Ꝛ`
-  remain explicitly excluded. Turkish permits its 29-letter alphabet,
-  `ÂâÎîÛû`, and `QqWwXx` for established spellings, proper names, and technical
-  loans;
-- normalizes typographic apostrophes to ASCII `'`, Unicode dash connectors to
-  ASCII `-`, subscript digits to ASCII digits, and removes soft hyphens. After
-  normalization, a headword must consist of alphanumeric segments connected by
-  single internal hyphens or apostrophes. Thus `state-of-the-art` and `7'nci`
-  remain eligible, while whitespace, leading/trailing or repeated connectors,
-  Braille, dotted-circle notation, enclosed letters, other symbols, and emoji
-  are excluded from the product dictionary;
-- splits unambiguous `~` pronunciation alternatives;
-- expands balanced, non-nested optional groups such as `(ː)`, with a strict
-  maximum of eight generated variants;
-- normalizes ASCII `'` stress notation to primary stress (`ˈ`), and normalizes
-  the middle-dot pronunciation separator (`·`) to `.`;
-- rejects embedded tabs/newlines, ellipses and incomplete fragments, ambiguous
-  comma alternatives, mixed ASCII-uppercase/SAMPA or orthographic notation,
-  Greek `α`/`ε`, Turkish dotless `ı` inside IPA, mismatched delimiters, and any
-  token still unrecognized after approved IPA modifiers are handled.
-
-Never silently discard or rewrite data. Alongside every eligible wordlist,
-write atomic JSONL pronunciation-rejection and IPA-transformation logs, a
-word-level rejection log, a headword-transformation log, and a JSON summary
-with counts by reason.
-Transformation rows preserve both original and normalized IPA. Pronunciation
-rejection rows preserve word, original IPA, reason, and relevant details.
-Word-rejection rows preserve the original headword, all its IPA values, the
-reason, and every rejected character with its Unicode code point and count.
-Headword-transformation rows preserve the original and normalized spelling,
-all IPA values, and each applied normalization. Merge pronunciations when two
-source spellings normalize to the same product headword.
-
-## IPA handling
-
-- Read both `sounds[].ipa` and `sounds[].audio-ipa`.
-- Preserve distinct IPA variants for a word.
-- Remove exact duplicate IPA values.
-- Reject empty values and complete placeholders such as `[...]`, `[…]`, `?`,
-  `/.../`, and `/…/`.
-- Square brackets and slashes are valid IPA delimiters; do not remove them from
-  legitimate pronunciations.
-- eSpeak NG may emit trailing blank lines or multiple lines for one
-  punctuation-heavy entry. Keep the adaptive batch-isolation behavior so an
-  anomalous word cannot shift every subsequent pronunciation.
-
-## Progress and atomicity
-
-- Long-running commands should retain single-line terminal progress reporting.
-- Extraction progress uses compressed bytes/total plus record and running
-  unique-word counts. Do not add a full pre-count pass over the dumps.
-- eSpeak progress uses exact processed/total word counts.
-- Download replacements through `.part` files and replace the previous archive
-  only after successful completion.
-- Generate output through `.part` files and atomically replace existing output
-  after successful completion.
-- A failed update must preserve the previous complete archive or output.
+Every cleanup output has atomic sidecars: pronunciation rejections
+(`*_rejected.jsonl`), word rejections (`*_rejected_words.jsonl`), IPA changes
+(`*_changes.jsonl`), word changes (`*_word_changes.jsonl`), and a count report
+(`*_report.json`). Logs retain original values, normalized values where
+applicable, reasons, and rejected character code points. Record the cleanup
+policy version in reports and release metadata.
 
 ## SQLite rhyme indexes
 
-Build one database per language and pronunciation source, with the Kaikki
-release encoded in every filename. Because each wordlist merges three
-Wiktionary editions, use a composite release slug containing the English,
-German, and Turkish edition dump dates, for example
-`en_kaikki-en20260902-de20260901-tr20260901.db` and
-`en_espeak_kaikki-en20260902-de20260901-tr20260901.db`.
-Keeping the sources separate preserves pronunciation provenance and permits
-each file to be shipped independently. An eSpeak database inherits the Kaikki
-release version of the no-IPA wordlist used as its input. Do not add a
-`language` or release column; the filename identifies the language, source,
-and release. Never label an output with a release that cannot be traced to the
-source archives' recorded Kaikki metadata.
+Build one database per language and source. Encode the traceable Kaikki dates
+for all three merged editions in the filename, for example:
 
-Each database uses this exact schema:
+```text
+en_kaikki-en20260902-de20260901-tr20260901.db
+en_espeak_kaikki-en20260902-de20260901-tr20260901.db
+```
+
+An eSpeak database inherits the release of its no-IPA source. Do not add
+language or release columns; provenance and version belong in the filename.
+Production databases consume only rhyme-eligible lists and use exactly:
 
 ```sql
 CREATE TABLE dictionary (
@@ -192,67 +126,37 @@ CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
 CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
-Only rhyme-eligible wordlists are database inputs. Their compact JSON arrays
-are expanded into one database row per `(word, ipa)` pair. Tokenize IPA with
-the inventory for that language before deriving the indexed values; never
-reverse raw characters. Unknown symbols must be counted and reported rather
-than silently discarded or accepted as single-character phonemes.
+Expand each IPA array to one `(word, ipa)` row. Tokenize with the audited
+language inventory; never reverse raw characters or silently accept/drop
+unknown symbols. Derived values are space-delimited token sequences:
 
-- `ipa_reversed` is the complete phoneme-token sequence in reverse order,
-  joined with one space.
-- `rhyme_key_reversed` starts at the vowel immediately after the last primary
-  stress marker (`ˈ`) and runs through the end, then is reversed and joined
-  with one space. If there is no primary stress, it starts at the last vowel.
-  This stress anchoring is required: fixed-length trailing-phoneme matches can
-  produce false positives from long shared unstressed suffixes.
-- `assonance_reversed` retains only vowel phonemes in their original order,
-  then reverses and space-joins them.
+- `ipa_reversed`: complete IPA tokens reversed.
+- `rhyme_key_reversed`: tokens from the vowel after the last primary stress
+  through the end, reversed; with no primary stress, start at the last vowel.
+- `assonance_reversed`: vowel-only tokens reversed.
 
-Do not add consonance keys, fixed-length tail columns, syllable counts,
-syllable boundaries, or inferred syllabification. Indexes are created after
-the bulk insert, and database replacement must use a `.part` file followed by
-an atomic replace.
+Stress anchoring is required; fixed-size tails over-match unstressed suffixes.
+Do not add consonance keys, fixed tails, syllable data, or syllabification.
+Create indexes after bulk insertion.
 
-Identity rhymes caused by compounds are a known limitation. For example,
-German compounds ending in the same standalone morpheme may match across that
-entire tail. Do not filter these in the database builder. A future on-device
-post-match filter can test whether a long matching tail is itself a standalone
-dictionary word.
+Compound identity rhymes remain a documented limitation. A future on-device
+filter may reject long matching tails that are standalone dictionary words;
+do not implement that policy in this build stage.
 
-## Validation
+## Validation and licensing
 
-Run the complete lightweight test suite after changes:
+Run:
 
 ```bash
 python3 -B -m unittest discover -s tests -v
+bash -n scripts/download_and_process.sh  # when shell code changes
 ```
 
-For shell changes, also run:
+Tests must not require real datasets or eSpeak; use a fake executable.
+Original code and tests are MIT (`LICENSE-CODE`). Downloaded, transformed, and
+generated dictionary data is CC BY-SA 4.0 (`LICENSE-DATA.md`). Keep attribution
+and transformation notices current, and never place dictionary data under MIT.
 
-```bash
-bash -n scripts/download_and_process.sh
-```
-
-The local development environment may not have eSpeak NG installed. Tests for
-the generator must continue to work through a fake executable.
-
-## Licensing
-
-- Original scripts, tests, and software-specific files are MIT licensed. See
-  `LICENSE-CODE`.
-- Downloaded, transformed, and generated dictionary data is CC BY-SA 4.0. See
-  `LICENSE-DATA.md`.
-- Keep source attribution and transformation notices accurate when adding new
-  datasets or G2P systems.
-- Do not place Wiktionary/Kaikki-derived data under the MIT license.
-
-## Change discipline
-
-- Prefer Python standard-library solutions; no third-party Python dependency is
-  currently required.
-- Keep scripts usable from any working directory by resolving repository paths
-  relative to the script location.
-- Preserve existing command-line behavior unless a change is documented and
-  tested.
-- Update `README.md`, tests, and licensing/provenance notes when behavior,
-  formats, data sources, or generated artifacts change.
+Update documentation, tests, and provenance when behavior, formats, sources,
+or generated artifacts change. Preserve existing CLI behavior unless a change
+is documented and tested.
