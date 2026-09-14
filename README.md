@@ -237,11 +237,13 @@ word is omitted only when none of its pronunciations survives.
 
 The `rhyme-cleanup-v2` policy:
 
-- requires the entire headword to match its language's standard alphabet plus
-  ASCII digits. English permits `A-Z/a-z`; German adds `ÄÖÜäöüßẞ`; Turkish
-  permits its exact 29-letter alphabet (`ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ` and
-  lowercase equivalents). Spaces, combining forms, internal or external
-  hyphens, apostrophes, Braille, dotted-circle notation, enclosed letters,
+- requires the entire headword to consist of alphanumeric segments using its
+  language's standard alphabet plus ASCII digits. English permits `A-Z/a-z`;
+  German adds `ÄÖÜäöüßẞ`; Turkish permits its exact 29-letter alphabet
+  (`ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ` and lowercase equivalents). A single ASCII
+  hyphen or apostrophe may connect segments, retaining forms such as
+  `state-of-the-art` and `7'nci`. Spaces, leading/trailing or repeated
+  connectors, Braille, dotted-circle notation, enclosed letters, other
   symbols, and emoji are excluded from the product dictionary. They remain in
   the canonical wordlists;
 - splits unambiguous alternatives joined by `~` into separate IPA values;
