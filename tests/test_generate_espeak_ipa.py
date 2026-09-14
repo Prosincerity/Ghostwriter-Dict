@@ -39,7 +39,9 @@ class GenerateEspeakIpaTest(unittest.TestCase):
                 "tr": ["kanka", "çevrim içi"],
             }
             for lang_code, words in inputs.items():
-                (outdir / f"wordlist_{lang_code}_noipa.txt").write_text(
+                language_outdir = outdir / lang_code
+                language_outdir.mkdir()
+                (language_outdir / f"wordlist_{lang_code}_noipa.txt").write_text(
                     "".join(f"{word}\n" for word in words), encoding="utf-8"
                 )
 
@@ -58,7 +60,9 @@ class GenerateEspeakIpaTest(unittest.TestCase):
             )
 
             for lang_code, words in inputs.items():
-                output_path = outdir / f"wordlist_{lang_code}_espeak_ipa.txt"
+                output_path = (
+                    outdir / lang_code / f"wordlist_{lang_code}_espeak_ipa.txt"
+                )
                 rows = output_path.read_text(encoding="utf-8").splitlines()
                 self.assertEqual(len(rows), len(words))
                 for row, word in zip(rows, words):

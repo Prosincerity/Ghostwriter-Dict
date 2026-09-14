@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-SMOKE_TEST = PROJECT_DIR / "test" / "scripts" / "run_rhyme_smoke_test.py"
+SMOKE_TEST = PROJECT_DIR / "tests" / "scripts" / "run_rhyme_smoke_test.py"
 FIXTURE = PROJECT_DIR / "tests" / "fixtures" / "wordlist_en_ipa.txt"
 
 
@@ -40,8 +40,8 @@ class RhymeSmokeTestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             input_dir = temp_path / "input"
-            input_dir.mkdir()
-            (input_dir / "wordlist_en_ipa.txt").write_text(
+            (input_dir / "en").mkdir(parents=True)
+            (input_dir / "en" / "wordlist_en_ipa.txt").write_text(
                 FIXTURE.read_text(encoding="utf-8"), encoding="utf-8"
             )
             first_output = temp_path / "first"
@@ -51,8 +51,8 @@ class RhymeSmokeTestTest(unittest.TestCase):
             self.run_smoke_test(input_dir, second_output)
 
             sample_name = "wordlist_en_sample-5_fixture-release.txt"
-            first_sample = first_output / "samples" / sample_name
-            second_sample = second_output / "samples" / sample_name
+            first_sample = first_output / "en" / "samples" / sample_name
+            second_sample = second_output / "en" / "samples" / sample_name
             self.assertEqual(
                 first_sample.read_text(encoding="utf-8"),
                 second_sample.read_text(encoding="utf-8"),
@@ -61,7 +61,12 @@ class RhymeSmokeTestTest(unittest.TestCase):
                 len(first_sample.read_text(encoding="utf-8").splitlines()), 5
             )
 
-            database = first_output / "databases" / "en_sample-5_fixture-release.db"
+            database = (
+                first_output
+                / "en"
+                / "databases"
+                / "en_sample-5_fixture-release.db"
+            )
             connection = sqlite3.connect(database)
             try:
                 self.assertEqual(
@@ -77,8 +82,11 @@ class RhymeSmokeTestTest(unittest.TestCase):
                 connection.close()
 
             manifest = json.loads(
-                (first_output / "smoke_manifest.json").read_text(encoding="utf-8")
+                (first_output / "en" / "smoke_manifest.json").read_text(
+                    encoding="utf-8"
+                )
             )
+            self.assertEqual(manifest["language"], "en")
             self.assertEqual(manifest["release_version"], "fixture-release")
             self.assertEqual(manifest["sample_size"], 5)
             self.assertEqual(manifest["results"][0]["integrity"], "ok")

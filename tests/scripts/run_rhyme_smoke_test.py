@@ -2,7 +2,7 @@
 """Build deterministic sampled rhyme databases from local wordlists.
 
 This is an opt-in integration/smoke test, not part of the lightweight unit
-suite. Generated samples and databases live below ``test/out/`` and are
+suite. Generated samples and databases live below ``out/<lang>/`` and are
 ignored by Git.
 """
 
@@ -66,8 +66,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=PROJECT_DIR / "test" / "out",
-        help="generated artifact root (default: repository test/out/)",
+        default=PROJECT_DIR / "out",
+        help="generated artifact root (default: repository out/)",
     )
     parser.add_argument(
         "--lang-code",
@@ -265,21 +265,19 @@ def main() -> None:
     args = parse_args()
     lang_codes = tuple(dict.fromkeys(args.lang_codes or LANGUAGES))
     sources = tuple(dict.fromkeys(args.sources or ("wiktionary",)))
-    samples_dir = args.output_root / "samples"
-    databases_dir = args.output_root / "databases"
-    samples_dir.mkdir(parents=True, exist_ok=True)
-    databases_dir.mkdir(parents=True, exist_ok=True)
+    args.output_root.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
 
     try:
         for source in sources:
             for lang_code in lang_codes:
-                input_path = args.input_dir / source_name(lang_code, source)
+                input_path = args.input_dir / lang_code / source_name(lang_code, source)
                 stem = artifact_stem(
                     lang_code, source, args.sample_size, args.release_version
                 )
-                sample_path = samples_dir / f"wordlist_{stem}.txt"
-                database_path = databases_dir / f"{stem}.db"
+                language_outdir = args.output_root / lang_code
+                sample_path = language_outdir / "samples" / f"wordlist_{stem}.txt"
+                database_path = language_outdir / "databases" / f"{stem}.db"
                 print(f"\nSampling {input_path}...", flush=True)
                 input_words, sampled_words = create_sample(
                     input_path,
@@ -333,15 +331,25 @@ def main() -> None:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from error
 
-    manifest = {
-        "release_version": args.release_version,
-        "sample_size": args.sample_size,
-        "seed": args.seed,
-        "sampling": "lowest 128-bit BLAKE2b hashes of seed, language, source, and row",
-        "results": results,
-    }
-    manifest_path = write_manifest(args.output_root, manifest)
-    print(f"\nSmoke test passed. Manifest: {manifest_path}")
+    manifest_paths = []
+    for lang_code in lang_codes:
+        manifest = {
+            "language": lang_code,
+            "release_version": args.release_version,
+            "sample_size": args.sample_size,
+            "seed": args.seed,
+            "sampling": (
+                "lowest 128-bit BLAKE2b hashes of seed, language, source, and row"
+            ),
+            "results": [
+                result for result in results if result["language"] == lang_code
+            ],
+        }
+        manifest_paths.append(write_manifest(args.output_root / lang_code, manifest))
+
+    print("\nSmoke test passed. Manifests:")
+    for manifest_path in manifest_paths:
+        print(f"  {manifest_path}")
 
 
 if __name__ == "__main__":

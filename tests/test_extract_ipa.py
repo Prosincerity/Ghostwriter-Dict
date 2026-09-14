@@ -127,12 +127,24 @@ class ExtractIpaTest(unittest.TestCase):
                 text=True,
             )
 
-            de_ipa = (temp_path / "wordlist_de_ipa.txt").read_text(encoding="utf-8")
-            de_noipa = (temp_path / "wordlist_de_noipa.txt").read_text(encoding="utf-8")
-            tr_ipa = (temp_path / "wordlist_tr_ipa.txt").read_text(encoding="utf-8")
-            tr_noipa = (temp_path / "wordlist_tr_noipa.txt").read_text(encoding="utf-8")
-            en_ipa = (temp_path / "wordlist_en_ipa.txt").read_text(encoding="utf-8")
-            en_noipa = (temp_path / "wordlist_en_noipa.txt").read_text(encoding="utf-8")
+            de_ipa = (temp_path / "de" / "wordlist_de_ipa.txt").read_text(
+                encoding="utf-8"
+            )
+            de_noipa = (temp_path / "de" / "wordlist_de_noipa.txt").read_text(
+                encoding="utf-8"
+            )
+            tr_ipa = (temp_path / "tr" / "wordlist_tr_ipa.txt").read_text(
+                encoding="utf-8"
+            )
+            tr_noipa = (temp_path / "tr" / "wordlist_tr_noipa.txt").read_text(
+                encoding="utf-8"
+            )
+            en_ipa = (temp_path / "en" / "wordlist_en_ipa.txt").read_text(
+                encoding="utf-8"
+            )
+            en_noipa = (temp_path / "en" / "wordlist_en_noipa.txt").read_text(
+                encoding="utf-8"
+            )
 
         self.assertEqual(
             de_ipa,
