@@ -213,6 +213,60 @@ an overly restrictive alphabet-only filter to slang.
 The script trusts the source's `lang_code`. A mislabeled Latin-script word may
 still pass through and should be handled by a later quality-audit stage.
 
+## Preparing rhyme-eligible wordlists
+
+Canonical Wiktionary and eSpeak wordlists intentionally preserve source data,
+including combining forms and unusual transcription notation. Before building
+SQLite databases, run the separate product-cleanup stage:
+
+```bash
+python3 scripts/clean_rhyme_wordlist.py \
+  out/en/wordlist_en_ipa.txt \
+  out/en/wordlist_en_rhyme_eligible.txt \
+  --lang-code en
+
+python3 scripts/clean_rhyme_wordlist.py \
+  out/en/wordlist_en_espeak_ipa.txt \
+  out/en/wordlist_en_espeak_rhyme_eligible.txt \
+  --lang-code en
+```
+
+Repeat this for German and Turkish. Cleanup is pronunciation-specific: if one
+IPA variant is malformed, other usable variants for the same word remain. A
+word is omitted only when none of its pronunciations survives.
+
+The `rhyme-cleanup-v1` policy:
+
+- excludes leading/trailing-hyphen combining forms such as `-casting` and
+  `anti-`, while retaining internally hyphenated words, phrases, slang, digits,
+  punctuation, and emoji;
+- splits unambiguous alternatives joined by `~` into separate IPA values;
+- expands balanced, non-nested optional groups such as `[dɔ(ː)ɡ]` into
+  `[dɔɡ]` and `[dɔːɡ]`, capped at eight variants;
+- normalizes verified ASCII apostrophe stress notation to `ˈ` and treats `·`
+  as the same harmless pronunciation separator as `.`;
+- rejects embedded tabs/newlines, ellipses or incomplete fragments, ambiguous
+  comma notation, mixed ASCII-uppercase/SAMPA or orthographic notation, Greek
+  `α`/`ε`, Turkish dotless `ı` in IPA, mismatched delimiters, and remaining
+  unrecognized tokens.
+
+The canonical inputs are never modified. For an output such as
+`wordlist_en_rhyme_eligible.txt`, the script atomically writes:
+
+```text
+wordlist_en_rhyme_eligible.txt
+wordlist_en_rhyme_eligible_rejected.jsonl
+wordlist_en_rhyme_eligible_changes.jsonl
+wordlist_en_rhyme_eligible_report.json
+```
+
+Rejection rows preserve the word, original IPA, reason, and details.
+Transformation rows preserve the original IPA and every normalized output.
+The summary contains input/output totals, counts by rejection and
+transformation reason, and the cleanup policy version. These artifacts make
+every product-level removal or rewrite auditable without weakening the
+canonical dataset.
+
 ## Slang coverage
 
 No part-of-speech, topic, register, or dictionary-word filter is applied.
@@ -288,12 +342,12 @@ Run the builder once for each desired input, passing its language explicitly:
 
 ```bash
 python3 scripts/generate_rhyme_db.py \
-  out/en/wordlist_en_ipa.txt \
+  out/en/wordlist_en_rhyme_eligible.txt \
   out/en/en_kaikki-en20260902-de20260901-tr20260901.db \
   --lang-code en \
   --release-version kaikki-en20260902-de20260901-tr20260901
 python3 scripts/generate_rhyme_db.py \
-  out/en/wordlist_en_espeak_ipa.txt \
+  out/en/wordlist_en_espeak_rhyme_eligible.txt \
   out/en/en_espeak_kaikki-en20260902-de20260901-tr20260901.db \
   --lang-code en \
   --release-version kaikki-en20260902-de20260901-tr20260901
@@ -337,17 +391,18 @@ index because browse-by-assonance is a standalone query, not only a score
 calculated after another lookup. No consonance key, fixed-size tail columns,
 syllable count, syllable boundary, or inferred syllabification is stored.
 
-The builder reports malformed input and unknown IPA symbols, prints single-line
-progress and summary statistics, creates indexes after its bulk insert, and
-atomically replaces the destination only after a successful build.
+Production database builds use the rhyme-eligible product wordlists. The
+builder reports any remaining unknown IPA symbols, prints single-line progress
+and summary statistics, creates indexes after its bulk insert, and atomically
+replaces the destination only after a successful build.
 
 ### Deterministic integration smoke test
 
 The opt-in smoke runner takes a deterministic, broadly distributed sample from
-each real wordlist, builds a database, checks its schema and indexes, runs
-`PRAGMA integrity_check`, and records counts in a manifest. It is intentionally
-separate from the lightweight automated suite. Run it only after those tests
-pass:
+each rhyme-eligible wordlist, builds a database, checks its schema and indexes,
+runs `PRAGMA integrity_check`, and records counts in a manifest. It is
+intentionally separate from the lightweight automated suite. Run it only after
+cleanup and the automated tests pass:
 
 ```bash
 python3 tests/scripts/run_rhyme_smoke_test.py \
@@ -395,10 +450,13 @@ The processed data is derived from English Wiktionary, German Wiktionary, and
 Turkish Wiktionary contributors using Kaikki.org and Wiktextract. The data is
 modified by language filtering, merging, Unicode normalization,
 deduplication, non-Latin headword filtering, IPA extraction, and invalid IPA
-removal. SQLite releases additionally expand pronunciation arrays, tokenize
-IPA, and derive indexed reversed rhyme and assonance keys. Pronunciations
-generated locally with eSpeak NG are identified by the
-`wordlist_<language>_espeak_ipa.txt` and versioned `*_espeak_*.db` filenames.
+removal. Product cleanup additionally filters combining forms, expands or
+normalizes supported transcription notation, rejects malformed pronunciation
+variants, and records all changes and rejections. SQLite releases expand the
+cleaned pronunciation arrays, tokenize IPA, and derive indexed reversed rhyme
+and assonance keys. Pronunciations generated locally with eSpeak NG are
+identified by the `wordlist_<language>_espeak_ipa.txt` and versioned
+`*_espeak_*.db` filenames.
 Other dataset additions must be documented in this section and must use terms
 compatible with CC BY-SA 4.0.
 

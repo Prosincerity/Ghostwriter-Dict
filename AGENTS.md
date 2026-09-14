@@ -17,6 +17,8 @@ Read `README.md` before making substantial changes.
   dumps and creates Wiktionary IPA/no-IPA wordlists.
 - `scripts/generate_espeak_ipa.py` calls eSpeak NG for words without a
   Wiktionary pronunciation.
+- `scripts/clean_rhyme_wordlist.py` creates product-filtered, rhyme-eligible
+  wordlists while preserving canonical inputs and writing audit logs.
 - `scripts/generate_rhyme_db.py` builds per-language, per-source SQLite rhyme
   indexes from the pronunciation wordlists.
 - `tests/` contains synthetic tests that do not require the real datasets or an
@@ -87,6 +89,35 @@ eSpeak-generated files are named
 one-word/JSON-array TSV format. Keep them separate from Wiktionary IPA so the
 pronunciation provenance remains identifiable.
 
+## Rhyme-product cleanup
+
+Canonical Wiktionary and eSpeak wordlists remain lossless inputs. Apply product
+cleanup only in a separate stage before SQLite generation. Cleaned files are
+named `wordlist_<lang>_rhyme_eligible.txt` and
+`wordlist_<lang>_espeak_rhyme_eligible.txt` in `out/<lang>/`. Process each
+pronunciation independently: keep usable variants for a word even when another
+variant is rejected, and omit the word only when no variants survive.
+
+The cleanup policy is versioned as `rhyme-cleanup-v1` and must be recorded in
+its report and database release metadata. It currently:
+
+- excludes headwords beginning or ending with `-` as combining forms, while
+  retaining internal hyphens, phrases, slang, digits, punctuation, and emoji;
+- splits unambiguous `~` pronunciation alternatives;
+- expands balanced, non-nested optional groups such as `(ː)`, with a strict
+  maximum of eight generated variants;
+- normalizes ASCII `'` stress notation to primary stress (`ˈ`), and normalizes
+  the middle-dot pronunciation separator (`·`) to `.`;
+- rejects embedded tabs/newlines, ellipses and incomplete fragments, ambiguous
+  comma alternatives, mixed ASCII-uppercase/SAMPA or orthographic notation,
+  Greek `α`/`ε`, Turkish dotless `ı` inside IPA, mismatched delimiters, and any
+  token still unrecognized after approved IPA modifiers are handled.
+
+Never silently discard or rewrite data. Alongside every eligible wordlist,
+write atomic JSONL rejection and transformation logs plus a JSON summary with
+counts by reason. Transformation rows preserve both original and normalized
+IPA. Rejection rows preserve word, original IPA, reason, and relevant details.
+
 ## IPA handling
 
 - Read both `sounds[].ipa` and `sounds[].audio-ipa`.
@@ -144,11 +175,11 @@ CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
 CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
-The wordlist's compact JSON array is expanded into one database row per
-`(word, ipa)` pair. Tokenize IPA with the inventory for that language before
-deriving the indexed values; never reverse raw characters. Unknown symbols
-must be counted and reported rather than silently discarded or accepted as
-single-character phonemes.
+Only rhyme-eligible wordlists are database inputs. Their compact JSON arrays
+are expanded into one database row per `(word, ipa)` pair. Tokenize IPA with
+the inventory for that language before deriving the indexed values; never
+reverse raw characters. Unknown symbols must be counted and reported rather
+than silently discarded or accepted as single-character phonemes.
 
 - `ipa_reversed` is the complete phoneme-token sequence in reverse order,
   joined with one space.
