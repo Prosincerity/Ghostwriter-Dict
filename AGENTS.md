@@ -98,11 +98,15 @@ named `wordlist_<lang>_rhyme_eligible.txt` and
 pronunciation independently: keep usable variants for a word even when another
 variant is rejected, and omit the word only when no variants survive.
 
-The cleanup policy is versioned as `rhyme-cleanup-v1` and must be recorded in
+The cleanup policy is versioned as `rhyme-cleanup-v2` and must be recorded in
 its report and database release metadata. It currently:
 
-- excludes headwords beginning or ending with `-` as combining forms, while
-  retaining internal hyphens, phrases, slang, digits, punctuation, and emoji;
+- requires the complete headword to contain only that language's standard
+  alphabet plus ASCII digits: `A-Z/a-z` for English; `A-Z/a-z`, umlauts, and
+  `ß`/`ẞ` for German; and the 29 Turkish letters for Turkish. This deliberately
+  excludes whitespace, combining forms, all hyphens and apostrophes, Braille,
+  dotted-circle notation, enclosed letters, symbols, and emoji from the
+  product dictionary while preserving them in the canonical wordlists;
 - splits unambiguous `~` pronunciation alternatives;
 - expands balanced, non-nested optional groups such as `(ː)`, with a strict
   maximum of eight generated variants;
@@ -114,9 +118,12 @@ its report and database release metadata. It currently:
   token still unrecognized after approved IPA modifiers are handled.
 
 Never silently discard or rewrite data. Alongside every eligible wordlist,
-write atomic JSONL rejection and transformation logs plus a JSON summary with
-counts by reason. Transformation rows preserve both original and normalized
-IPA. Rejection rows preserve word, original IPA, reason, and relevant details.
+write atomic JSONL pronunciation-rejection and transformation logs, a
+word-level rejection log, and a JSON summary with counts by reason.
+Transformation rows preserve both original and normalized IPA. Pronunciation
+rejection rows preserve word, original IPA, reason, and relevant details.
+Word-rejection rows preserve the original headword, all its IPA values, the
+reason, and every rejected character with its Unicode code point and count.
 
 ## IPA handling
 
