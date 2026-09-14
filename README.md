@@ -235,11 +235,15 @@ Repeat this for German and Turkish. Cleanup is pronunciation-specific: if one
 IPA variant is malformed, other usable variants for the same word remain. A
 word is omitted only when none of its pronunciations survives.
 
-The `rhyme-cleanup-v1` policy:
+The `rhyme-cleanup-v2` policy:
 
-- excludes leading/trailing-hyphen combining forms such as `-casting` and
-  `anti-`, while retaining internally hyphenated words, phrases, slang, digits,
-  punctuation, and emoji;
+- requires the entire headword to match its language's standard alphabet plus
+  ASCII digits. English permits `A-Z/a-z`; German adds `ÄÖÜäöüßẞ`; Turkish
+  permits its exact 29-letter alphabet (`ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ` and
+  lowercase equivalents). Spaces, combining forms, internal or external
+  hyphens, apostrophes, Braille, dotted-circle notation, enclosed letters,
+  symbols, and emoji are excluded from the product dictionary. They remain in
+  the canonical wordlists;
 - splits unambiguous alternatives joined by `~` into separate IPA values;
 - expands balanced, non-nested optional groups such as `[dɔ(ː)ɡ]` into
   `[dɔɡ]` and `[dɔːɡ]`, capped at eight variants;
@@ -256,11 +260,14 @@ The canonical inputs are never modified. For an output such as
 ```text
 wordlist_en_rhyme_eligible.txt
 wordlist_en_rhyme_eligible_rejected.jsonl
+wordlist_en_rhyme_eligible_rejected_words.jsonl
 wordlist_en_rhyme_eligible_changes.jsonl
 wordlist_en_rhyme_eligible_report.json
 ```
 
 Rejection rows preserve the word, original IPA, reason, and details.
+Word-rejection rows preserve the original headword, all its pronunciations,
+the rejection reason, and rejected-character counts with Unicode code points.
 Transformation rows preserve the original IPA and every normalized output.
 The summary contains input/output totals, counts by rejection and
 transformation reason, and the cleanup policy version. These artifacts make
@@ -269,10 +276,12 @@ canonical dataset.
 
 ## Slang coverage
 
-No part-of-speech, topic, register, or dictionary-word filter is applied.
-Consequently, slang, internet language, abbreviations, phrases, punctuation,
-numbers, and emoji are retained when Wiktionary contains them under the
-selected language code.
+No part-of-speech, topic, register, or dictionary-word filter is applied to the
+canonical wordlists. Consequently, slang, internet language, abbreviations,
+phrases, punctuation, numbers, and emoji remain available for auditing when
+Wiktionary contains them under the selected language code. The stricter
+rhyme-product cleanup accepts slang and abbreviations only when the complete
+headword uses the selected language's alphabet or ASCII digits.
 
 This does not guarantee complete coverage of Gen Z, internet, or street slang:
 Kaikki extracts what Wiktionary contributors have documented. Additional
@@ -450,11 +459,12 @@ The processed data is derived from English Wiktionary, German Wiktionary, and
 Turkish Wiktionary contributors using Kaikki.org and Wiktextract. The data is
 modified by language filtering, merging, Unicode normalization,
 deduplication, non-Latin headword filtering, IPA extraction, and invalid IPA
-removal. Product cleanup additionally filters combining forms, expands or
-normalizes supported transcription notation, rejects malformed pronunciation
-variants, and records all changes and rejections. SQLite releases expand the
-cleaned pronunciation arrays, tokenize IPA, and derive indexed reversed rhyme
-and assonance keys. Pronunciations generated locally with eSpeak NG are
+removal. Product cleanup additionally applies a language-specific alphanumeric
+headword policy, expands or normalizes supported transcription notation,
+rejects malformed pronunciation variants, and records all changes and
+rejections. SQLite releases expand the cleaned pronunciation arrays, tokenize
+IPA, and derive indexed reversed rhyme and assonance keys. Pronunciations
+generated locally with eSpeak NG are
 identified by the `wordlist_<language>_espeak_ipa.txt` and versioned
 `*_espeak_*.db` filenames.
 Other dataset additions must be documented in this section and must use terms
