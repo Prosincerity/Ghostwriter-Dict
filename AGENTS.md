@@ -21,6 +21,8 @@ Read `README.md` before making substantial changes.
   indexes from the pronunciation wordlists.
 - `tests/` contains synthetic tests that do not require the real datasets or an
   installed eSpeak NG binary.
+- `test/scripts/run_rhyme_smoke_test.py` creates deterministic local samples
+  and validates sampled databases; its generated `test/out/` tree is ignored.
 - `raw/` contains multi-gigabyte source archives and HTTP `ETag` sidecars.
 - `out/` contains generated wordlists and, eventually, the SQLite database.
 
