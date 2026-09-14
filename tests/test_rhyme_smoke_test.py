@@ -41,7 +41,7 @@ class RhymeSmokeTestTest(unittest.TestCase):
             temp_path = Path(temp_dir)
             input_dir = temp_path / "input"
             (input_dir / "en").mkdir(parents=True)
-            (input_dir / "en" / "wordlist_en_ipa.txt").write_text(
+            (input_dir / "en" / "wordlist_en_rhyme_eligible.txt").write_text(
                 FIXTURE.read_text(encoding="utf-8"), encoding="utf-8"
             )
             first_output = temp_path / "first"
@@ -87,6 +87,7 @@ class RhymeSmokeTestTest(unittest.TestCase):
                 )
             )
             self.assertEqual(manifest["language"], "en")
+            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v1")
             self.assertEqual(manifest["release_version"], "fixture-release")
             self.assertEqual(manifest["sample_size"], 5)
             self.assertEqual(manifest["results"][0]["integrity"], "ok")

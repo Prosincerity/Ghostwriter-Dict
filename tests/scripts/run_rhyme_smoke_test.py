@@ -22,6 +22,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 RHYME_DB_SCRIPT = PROJECT_DIR / "scripts" / "generate_rhyme_db.py"
 LANGUAGES = ("en", "de", "tr")
 SOURCES = ("wiktionary", "espeak")
+CLEANUP_POLICY_VERSION = "rhyme-cleanup-v1"
 
 
 class ProgressBar:
@@ -106,7 +107,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def source_name(lang_code: str, source: str) -> str:
-    suffix = "_espeak_ipa" if source == "espeak" else "_ipa"
+    suffix = "_espeak_rhyme_eligible" if source == "espeak" else "_rhyme_eligible"
     return f"wordlist_{lang_code}{suffix}.txt"
 
 
@@ -334,6 +335,7 @@ def main() -> None:
     manifest_paths = []
     for lang_code in lang_codes:
         manifest = {
+            "cleanup_policy_version": CLEANUP_POLICY_VERSION,
             "language": lang_code,
             "release_version": args.release_version,
             "sample_size": args.sample_size,

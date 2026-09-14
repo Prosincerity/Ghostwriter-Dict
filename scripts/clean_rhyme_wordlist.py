@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""Create an audited, product-filtered wordlist for rhyme database builds."""
+
+import argparse
+import json
+import os
+import re
+import sys
+import unicodedata
+from collections import Counter
+from pathlib import Path
+from typing import Optional, TextIO
+
+from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
+
+
+POLICY_VERSION = "rhyme-cleanup-v1"
+MAX_OPTIONAL_VARIANTS = 8
+WRAPPERS = {"/": "/", "[": "]"}
+
+
+class ProgressBar:
+    def __init__(self, total_bytes: int, stream: TextIO = sys.stderr):
+        self.total_bytes = total_bytes
+        self.stream = stream
+        self.last_width = 0
+
+    def update(self, current_bytes: int, words: int, kept: int) -> None:
+        if not self.stream.isatty():
+            return
+        fraction = (
+            min(current_bytes / self.total_bytes, 1.0)
+            if self.total_bytes
+            else 1.0
+        )
+        filled = round(30 * fraction)
+        bar = "#" * filled + "-" * (30 - filled)
+        message = (
+            f"\rCleaning [{bar}] {fraction:6.2%} "
+            f"{current_bytes:,}/{self.total_bytes:,} bytes "
+            f"words={words:,} kept={kept:,}"
+        )
+        self.stream.write(message.ljust(self.last_width))
+        self.stream.flush()
+        self.last_width = max(self.last_width, len(message))
+
+    def finish(self) -> None:
+        if self.stream.isatty():
+            self.stream.write("\n")
+            self.stream.flush()
+
+
+def output_paths(output_path: Path) -> dict[str, Path]:
+    stem = output_path.with_suffix("")
+    return {
+        "wordlist": output_path,
+        "rejected": stem.with_name(f"{stem.name}_rejected.jsonl"),
+        "changes": stem.with_name(f"{stem.name}_changes.jsonl"),
+        "report": stem.with_name(f"{stem.name}_report.json"),
+    }
+
+
+def wrapper(value: str) -> Optional[tuple[str, str, str]]:
+    if len(value) >= 2 and value[0] in WRAPPERS and value[-1] == WRAPPERS[value[0]]:
+        return value[0], value[-1], value[1:-1]
+    return None
+
+
+def split_alternatives(value: str) -> tuple[list[str], list[str]]:
+    """Split only visibly unambiguous tilde or wrapped-comma alternatives."""
+    transformations: list[str] = []
+    if "~" in value:
+        wrapped = wrapper(value)
+        if wrapped and not any(character in wrapped[2] for character in "/[]"):
+            opening, closing, body = wrapped
+            parts = [part.strip() for part in body.split("~")]
+            if any(not part for part in parts):
+                raise ValueError("ambiguous_tilde_notation")
+            values = [f"{opening}{part}{closing}" for part in parts]
+        else:
+            parts = [part.strip() for part in value.split("~")]
+            if any(not part or wrapper(part) is None for part in parts):
+                raise ValueError("ambiguous_tilde_notation")
+            values = parts
+        transformations.append("split_tilde_alternatives")
+        return values, transformations
+
+    if "," in value:
+        # A comma inside one transcription may separate syllables, annotations,
+        # or alternatives. Only a sequence of independently wrapped values is
+        # safe to split automatically.
+        parts = [part.strip() for part in value.split(",")]
+        if any(not part or wrapper(part) is None for part in parts):
+            raise ValueError("ambiguous_comma_notation")
+        transformations.append("split_wrapped_comma_alternatives")
+        return parts, transformations
+
+    return [value], transformations
+
+
+def expand_optional_groups(value: str) -> tuple[list[str], list[str]]:
+    if "(" not in value and ")" not in value:
+        return [value], []
+    if value.count("(") != value.count(")"):
+        raise ValueError("invalid_optional_group")
+    if any(character in re.sub(r"\([^()]+\)", "", value) for character in "()"):
+        raise ValueError("invalid_optional_group")
+
+    variants = [value]
+    while any("(" in variant or ")" in variant for variant in variants):
+        expanded: list[str] = []
+        for variant in variants:
+            match = re.search(r"\(([^()]*)\)", variant)
+            if match is None or not match.group(1):
+                raise ValueError("invalid_optional_group")
+            before, optional, after = (
+                variant[: match.start()],
+                match.group(1),
+                variant[match.end() :],
+            )
+            expanded.extend((before + after, before + optional + after))
+        variants = list(dict.fromkeys(expanded))
+        if len(variants) > MAX_OPTIONAL_VARIANTS:
+            raise ValueError("too_many_optional_variants")
+    return variants, ["expand_optional_groups"]
+
+
+def validate_delimiters(value: str) -> bool:
+    wrapped = wrapper(value)
+    body = wrapped[2] if wrapped else value
+    if wrapped is None and any(character in "/[]" for character in value):
+        return False
+    return not any(character in "/[]" for character in body)
+
+
+def clean_pronunciation(
+    ipa: str, lang_code: str
+) -> tuple[list[str], list[str], list[dict[str, object]]]:
+    """Return valid normalized variants, transformation names, and rejects."""
+    if any(character in ipa for character in "\t\r\n"):
+        return [], [], [{"reason": "embedded_control"}]
+    if "…" in ipa or "..." in ipa:
+        return [], [], [{"reason": "incomplete_pronunciation"}]
+
+    try:
+        alternatives, transformations = split_alternatives(ipa.strip())
+    except ValueError as error:
+        return [], [], [{"reason": str(error)}]
+
+    candidates: list[str] = []
+    try:
+        for alternative in alternatives:
+            expanded, optional_transformations = expand_optional_groups(alternative)
+            candidates.extend(expanded)
+            transformations.extend(optional_transformations)
+    except ValueError as error:
+        return [], list(dict.fromkeys(transformations)), [{"reason": str(error)}]
+
+    valid: list[str] = []
+    rejects: list[dict[str, object]] = []
+    if "'" in ipa:
+        transformations.append("normalize_ascii_stress")
+    if "·" in ipa:
+        transformations.append("normalize_middle_dot")
+
+    for candidate in candidates:
+        candidate = unicodedata.normalize(
+            "NFC", candidate.replace("'", "ˈ").replace("·", ".")
+        )
+        reason = None
+        details: dict[str, object] = {"candidate": candidate}
+        if not candidate.strip():
+            reason = "empty_pronunciation"
+        elif not validate_delimiters(candidate):
+            reason = "invalid_delimiters"
+        elif re.search(r"[A-Z]", candidate):
+            reason = "mixed_uppercase_notation"
+        elif any(character in candidate for character in "αε"):
+            reason = "non_ipa_orthographic_symbol"
+        elif "ı" in candidate:
+            reason = "orthographic_dotless_i"
+        else:
+            unknown: Counter[str] = Counter()
+            tokens = tokenize_ipa(candidate, lang_code, unknown)
+            if unknown:
+                reason = "unrecognized_tokens"
+                details["tokens"] = dict(sorted(unknown.items()))
+            elif not tokens:
+                reason = "empty_pronunciation"
+        if reason:
+            rejects.append({"reason": reason, "details": details})
+        else:
+            valid.append(candidate)
+
+    return list(dict.fromkeys(valid)), list(dict.fromkeys(transformations)), rejects
+
+
+def write_json_line(stream: TextIO, value: dict[str, object]) -> None:
+    stream.write(
+        json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+    )
+    stream.write("\n")
+
+
+def clean_wordlist(
+    input_path: Path, output_path: Path, lang_code: str
+) -> dict[str, object]:
+    if not input_path.is_file():
+        raise FileNotFoundError(f"missing input wordlist: {input_path}")
+    paths = output_paths(output_path)
+    for path in paths.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    part_paths = {
+        name: path.with_name(f"{path.name}.part") for name, path in paths.items()
+    }
+    for path in part_paths.values():
+        path.unlink(missing_ok=True)
+
+    counts = Counter()
+    rejection_reasons: Counter[str] = Counter()
+    transformation_reasons: Counter[str] = Counter()
+    bytes_processed = 0
+    progress = ProgressBar(input_path.stat().st_size)
+
+    try:
+        with (
+            input_path.open("r", encoding="utf-8") as source,
+            part_paths["wordlist"].open("w", encoding="utf-8", newline="\n") as output,
+            part_paths["rejected"].open("w", encoding="utf-8", newline="\n") as rejected,
+            part_paths["changes"].open("w", encoding="utf-8", newline="\n") as changes,
+        ):
+            for line_number, line in enumerate(source, start=1):
+                bytes_processed += len(line.encode("utf-8"))
+                word, ipas = parse_wordlist_line(input_path, line_number, line)
+                counts["input_words"] += 1
+                counts["input_pronunciations"] += len(ipas)
+                eligible: list[str] = []
+
+                if word.startswith("-") or word.endswith("-"):
+                    for ipa in ipas:
+                        write_json_line(
+                            rejected,
+                            {
+                                "ipa": ipa,
+                                "policy_version": POLICY_VERSION,
+                                "reason": "combining_form",
+                                "word": word,
+                            },
+                        )
+                        rejection_reasons["combining_form"] += 1
+                        counts["rejected_candidates"] += 1
+                else:
+                    for ipa in ipas:
+                        normalized, transformations, rejects = clean_pronunciation(
+                            ipa, lang_code
+                        )
+                        eligible.extend(normalized)
+                        if transformations or (normalized and normalized != [ipa]):
+                            write_json_line(
+                                changes,
+                                {
+                                    "normalized_ipas": normalized,
+                                    "original_ipa": ipa,
+                                    "policy_version": POLICY_VERSION,
+                                    "transformations": transformations,
+                                    "word": word,
+                                },
+                            )
+                            counts["transformed_pronunciations"] += 1
+                            transformation_reasons.update(transformations)
+                        for reject in rejects:
+                            row = {
+                                "ipa": ipa,
+                                "policy_version": POLICY_VERSION,
+                                "reason": reject["reason"],
+                                "word": word,
+                            }
+                            if "details" in reject:
+                                row["details"] = reject["details"]
+                            write_json_line(rejected, row)
+                            rejection_reasons[str(reject["reason"])] += 1
+                            counts["rejected_candidates"] += 1
+
+                eligible = list(dict.fromkeys(eligible))
+                if eligible:
+                    encoded = json.dumps(
+                        eligible, ensure_ascii=False, separators=(",", ":")
+                    )
+                    output.write(f"{word}\t{encoded}\n")
+                    counts["eligible_words"] += 1
+                    counts["eligible_pronunciations"] += len(eligible)
+                else:
+                    counts["omitted_words"] += 1
+                if line_number % 1_000 == 0:
+                    progress.update(
+                        bytes_processed,
+                        counts["input_words"],
+                        counts["eligible_words"],
+                    )
+            progress.update(
+                input_path.stat().st_size,
+                counts["input_words"],
+                counts["eligible_words"],
+            )
+
+        report: dict[str, object] = {
+            "counts": dict(sorted(counts.items())),
+            "input": str(input_path),
+            "language": lang_code,
+            "output": str(output_path),
+            "policy_version": POLICY_VERSION,
+            "rejection_reasons": dict(sorted(rejection_reasons.items())),
+            "transformation_reasons": dict(sorted(transformation_reasons.items())),
+        }
+        with part_paths["report"].open(
+            "w", encoding="utf-8", newline="\n"
+        ) as report_file:
+            json.dump(report, report_file, ensure_ascii=False, indent=2, sort_keys=True)
+            report_file.write("\n")
+        for name in ("wordlist", "rejected", "changes", "report"):
+            os.replace(part_paths[name], paths[name])
+        return report
+    except BaseException:
+        for path in part_paths.values():
+            path.unlink(missing_ok=True)
+        raise
+    finally:
+        progress.finish()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Create an audited rhyme-eligible wordlist."
+    )
+    parser.add_argument("input", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--lang-code", choices=LANGUAGES, required=True)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    try:
+        report = clean_wordlist(args.input, args.output, args.lang_code)
+    except (FileNotFoundError, OSError, UnicodeError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
+    counts = report["counts"]
+    print(f"Cleanup policy       : {POLICY_VERSION}")
+    print(f"Input words          : {counts.get('input_words', 0):,}")
+    print(f"Input pronunciations : {counts.get('input_pronunciations', 0):,}")
+    print(f"Eligible words       : {counts.get('eligible_words', 0):,}")
+    print(f"Eligible IPA         : {counts.get('eligible_pronunciations', 0):,}")
+    print(f"Omitted words        : {counts.get('omitted_words', 0):,}")
+    print(f"Rejected candidates  : {counts.get('rejected_candidates', 0):,}")
+    print(f"Output               : {args.output}")
+
+
+if __name__ == "__main__":
+    main()
