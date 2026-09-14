@@ -2,12 +2,12 @@
 
 This repository builds English, German, and Turkish word/pronunciation lists
 from machine-readable Wiktionary data published by
-[Kaikki.org](https://kaikki.org/dictionary/). The processed lists are intended
-to become a SQLite dictionary consumed by the Ghostwriter application.
+[Kaikki.org](https://kaikki.org/dictionary/). The processed lists feed SQLite
+rhyme indexes consumed by the Ghostwriter application.
 
-The current pipeline creates the intermediate wordlists and can use eSpeak NG
-to generate IPA for words that have no Wiktionary pronunciation. SQLite
-generation is planned but is not implemented yet.
+The pipeline creates intermediate wordlists, can use eSpeak NG to generate IPA
+for words that have no Wiktionary pronunciation, and builds per-language,
+per-source SQLite rhyme indexes.
 
 ## Data sources
 
@@ -258,23 +258,77 @@ audio-specific IPA, slang/emoji retention, non-Latin headword rejection, and
 eSpeak output parsing. The eSpeak test uses a temporary fake executable, so
 eSpeak NG does not need to be installed to run the tests.
 
-## Planned SQLite representation
+## SQLite rhyme indexes
 
-Because the same spelling may occur in more than one language, a combined
-database should use `(language, word)` rather than `word` alone as its primary
-key. The IPA JSON array can be stored directly as text:
+The final build stage creates one database per language and pronunciation
+source so provenance remains explicit and each database can be distributed
+independently:
 
-```sql
-CREATE TABLE entries (
-    language TEXT NOT NULL,
-    word TEXT NOT NULL,
-    ipa TEXT NOT NULL,
-    PRIMARY KEY (language, word)
-);
+```text
+out/en.db
+out/en_espeak.db
+out/de.db
+out/de_espeak.db
+out/tr.db
+out/tr_espeak.db
 ```
 
-An alternative normalized schema can place pronunciations in a child table.
-That is preferable if Ghostwriter needs to query individual pronunciations.
+Run the builder once for each desired input, passing its language explicitly:
+
+```bash
+python3 scripts/generate_rhyme_db.py \
+  out/wordlist_en_ipa.txt out/en.db --lang-code en
+python3 scripts/generate_rhyme_db.py \
+  out/wordlist_en_espeak_ipa.txt out/en_espeak.db --lang-code en
+```
+
+Each JSON-array pronunciation is expanded into a separate `(word, ipa)` row.
+Every database has the same schema; its filename, rather than a database
+column, identifies the language and pronunciation source:
+
+```sql
+CREATE TABLE dictionary (
+    word TEXT NOT NULL,
+    ipa TEXT NOT NULL,
+    ipa_reversed TEXT NOT NULL,
+    rhyme_key_reversed TEXT NOT NULL,
+    assonance_reversed TEXT NOT NULL,
+    PRIMARY KEY (word, ipa)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_ipa_reversed ON dictionary(ipa_reversed);
+CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
+CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
+```
+
+IPA is tokenized with a language-specific phoneme inventory so affricates,
+length marks, and diacritics remain attached to the correct phoneme. The
+complete token sequence is reversed and space-delimited in `ipa_reversed`,
+turning pronunciation-tail searches into indexable prefix searches.
+
+`rhyme_key_reversed` contains the reversed sequence from the vowel following
+the last primary stress marker (`ˈ`) through the end of the pronunciation.
+When primary stress is absent, it falls back to the final vowel. Anchoring at
+stress is intentional: merely matching a fixed number of trailing phonemes
+would over-match words that share a long unstressed suffix.
+
+`assonance_reversed` contains the reversed vowel-only sequence. It has its own
+index because browse-by-assonance is a standalone query, not only a score
+calculated after another lookup. No consonance key, fixed-size tail columns,
+syllable count, syllable boundary, or inferred syllabification is stored.
+
+The builder reports malformed input and unknown IPA symbols, prints single-line
+progress and summary statistics, creates indexes after its bulk insert, and
+atomically replaces the destination only after a successful build.
+
+### Known rhyme-matching limitation
+
+The database does not suppress identity rhymes created by compounds. German
+words such as `Naturwissenschaft` and `Geisteswissenschaft`, for example, can
+match across the complete `-wissenschaft` tail. This is deliberately left for
+a future on-device post-match filter that can check whether a long matching
+tail is itself a standalone dictionary word; it is not part of the schema or
+database build.
 
 ## Licensing and attribution
 
