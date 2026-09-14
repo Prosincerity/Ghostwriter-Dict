@@ -5,8 +5,8 @@ The language named by a Kaikki dump is its Wiktionary edition, not a filter.
 Every input is searched and each entry is routed using its exact ``lang_code``.
 
 Output (UTF-8, tab-separated where applicable):
-  wordlist_<lang>_ipa.txt    word<TAB>["ipa1","ipa2"] (one word per line)
-  wordlist_<lang>_noipa.txt  word
+  <lang>/wordlist_<lang>_ipa.txt    word<TAB>["ipa1","ipa2"]
+  <lang>/wordlist_<lang>_noipa.txt  word
 
 Both uncompressed .jsonl and gzip-compressed .jsonl.gz inputs are supported.
 """
@@ -231,8 +231,10 @@ def main() -> None:
     print(f"Other invalid records : {invalid_entries}")
 
     for lang_code in lang_codes:
-        ipa_path = args.outdir / f"wordlist_{lang_code}_ipa.txt"
-        noipa_path = args.outdir / f"wordlist_{lang_code}_noipa.txt"
+        language_outdir = args.outdir / lang_code
+        language_outdir.mkdir(parents=True, exist_ok=True)
+        ipa_path = language_outdir / f"wordlist_{lang_code}_ipa.txt"
+        noipa_path = language_outdir / f"wordlist_{lang_code}_noipa.txt"
 
         with ipa_path.open("w", encoding="utf-8", newline="\n") as output:
             for word, ipas in word_ipas[lang_code].items():

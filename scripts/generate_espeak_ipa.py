@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate IPA for no-IPA wordlists by calling eSpeak NG in batches.
 
-For every selected language this reads ``wordlist_<lang>_noipa.txt`` and
-atomically overwrites ``wordlist_<lang>_espeak_ipa.txt`` in the output folder.
-Output rows use ``word<TAB>["ipa"]``.
+For every selected language this reads ``<lang>/wordlist_<lang>_noipa.txt`` and
+atomically overwrites ``<lang>/wordlist_<lang>_espeak_ipa.txt`` below the
+output folder. Output rows use ``word<TAB>["ipa"]``.
 """
 
 import argparse
@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         "--outdir",
         type=Path,
         default=Path(__file__).resolve().parents[1] / "out",
-        help="directory containing wordlist_<lang>_noipa.txt files",
+        help="root containing <lang>/wordlist_<lang>_noipa.txt files",
     )
     parser.add_argument(
         "--lang-code",
@@ -216,8 +216,9 @@ def write_batch(
 def process_language(
     executable: str, outdir: Path, lang_code: str, batch_size: int
 ) -> None:
-    input_path = outdir / f"wordlist_{lang_code}_noipa.txt"
-    output_path = outdir / f"wordlist_{lang_code}_espeak_ipa.txt"
+    language_outdir = outdir / lang_code
+    input_path = language_outdir / f"wordlist_{lang_code}_noipa.txt"
+    output_path = language_outdir / f"wordlist_{lang_code}_espeak_ipa.txt"
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
 
