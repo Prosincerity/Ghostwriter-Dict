@@ -5,7 +5,7 @@
 This repository builds English, German, and Turkish word/pronunciation data for
 the Ghostwriter application. It downloads Kaikki/Wiktextract JSONL dumps,
 extracts and deduplicates Wiktionary pronunciations, generates missing IPA with
-eSpeak NG, and will eventually build a versioned SQLite database.
+eSpeak NG, and builds versioned SQLite rhyme indexes.
 
 Read `README.md` before making substantial changes.
 
@@ -17,6 +17,8 @@ Read `README.md` before making substantial changes.
   dumps and creates Wiktionary IPA/no-IPA wordlists.
 - `scripts/generate_espeak_ipa.py` calls eSpeak NG for words without a
   Wiktionary pronunciation.
+- `scripts/generate_rhyme_db.py` builds per-language, per-source SQLite rhyme
+  indexes from the pronunciation wordlists.
 - `tests/` contains synthetic tests that do not require the real datasets or an
   installed eSpeak NG binary.
 - `raw/` contains multi-gigabyte source archives and HTTP `ETag` sidecars.
@@ -106,19 +108,57 @@ the pronunciation provenance remains identifiable.
   after successful completion.
 - A failed update must preserve the previous complete archive or output.
 
-## SQLite direction
+## SQLite rhyme indexes
 
-The same spelling may exist in multiple languages, so a combined database must
-not use `word` alone as a global primary key. Use at least:
+Build one database per language and pronunciation source: `en.db`,
+`en_espeak.db`, `de.db`, `de_espeak.db`, `tr.db`, and `tr_espeak.db`. Keeping
+the sources separate preserves pronunciation provenance and permits each file
+to be shipped independently. Do not add a `language` column; the filename
+identifies the language and source.
+
+Each database uses this exact schema:
 
 ```sql
-PRIMARY KEY (language, word)
+CREATE TABLE dictionary (
+    word TEXT NOT NULL,
+    ipa TEXT NOT NULL,
+    ipa_reversed TEXT NOT NULL,
+    rhyme_key_reversed TEXT NOT NULL,
+    assonance_reversed TEXT NOT NULL,
+    PRIMARY KEY (word, ipa)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_ipa_reversed ON dictionary(ipa_reversed);
+CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
+CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
-The current wordlist IPA field is a JSON array. A future normalized
-pronunciation child table is also acceptable if Ghostwriter needs to query
-individual pronunciations. Preserve pronunciation provenance so Wiktionary and
-eSpeak-generated values remain distinguishable.
+The wordlist's compact JSON array is expanded into one database row per
+`(word, ipa)` pair. Tokenize IPA with the inventory for that language before
+deriving the indexed values; never reverse raw characters. Unknown symbols
+must be counted and reported rather than silently discarded or accepted as
+single-character phonemes.
+
+- `ipa_reversed` is the complete phoneme-token sequence in reverse order,
+  joined with one space.
+- `rhyme_key_reversed` starts at the vowel immediately after the last primary
+  stress marker (`ˈ`) and runs through the end, then is reversed and joined
+  with one space. If there is no primary stress, it starts at the last vowel.
+  This stress anchoring is required: fixed-length trailing-phoneme matches can
+  produce false positives from long shared unstressed suffixes.
+- `assonance_reversed` retains only vowel phonemes in their original order,
+  then reverses and space-joins them.
+
+Do not add consonance keys, fixed-length tail columns, syllable counts,
+syllable boundaries, or inferred syllabification. Indexes are created after
+the bulk insert, and database replacement must use a `.part` file followed by
+an atomic replace.
+
+Identity rhymes caused by compounds are a known limitation. For example,
+German compounds ending in the same standalone morpheme may match across that
+entire tail. Do not filter these in the database builder. A future on-device
+post-match filter can test whether a long matching tail is itself a standalone
+dictionary word.
 
 ## Validation
 
