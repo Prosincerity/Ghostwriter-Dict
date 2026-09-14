@@ -1,4 +1,5 @@
 /raw/
 /out/
+/test/out/
 __pycache__/
 *.py[cod]

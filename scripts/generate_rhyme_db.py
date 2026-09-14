@@ -20,7 +20,7 @@ import sys
 import unicodedata
 from collections import Counter
 from pathlib import Path
-from typing import Iterable, TextIO
+from typing import Iterable, Optional, TextIO
 
 
 LANGUAGES = ("en", "de", "tr")
@@ -61,11 +61,12 @@ VOWELS = {
 CONSONANTS = {
     "en": frozenset(
         (
-            "b", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r",
-            "q", "s", "t", "v", "w", "x", "z", "ç", "ð", "β", "ɕ", "ɖ",
+            "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r",
+            "q", "s", "t", "v", "w", "x", "z", "ç", "ð", "β", "ɓ", "ɕ", "ɖ",
             "ɗ", "ɟ", "ɢ", "ɡ", "ɣ", "ɥ", "ɦ", "ɫ", "ɬ", "ɭ", "ɱ", "ɲ",
             "ɳ", "ɸ", "ɹ", "ɻ", "ɽ", "ɾ", "ʀ", "ʁ", "ʂ", "ʃ", "ʈ", "ʋ",
-            "ʎ", "ʑ", "ʒ", "ʔ", "ʕ", "ʝ", "ʟ", "ʍ", "θ", "χ", "ŋ", "ł",
+            "ʎ", "ʑ", "ʒ", "ʔ", "ʕ", "ʝ", "ʟ", "ʙ", "ʍ", "θ", "χ", "ŋ", "ł",
+            "ǀ", "ǁ", "ǃ",
             "tʃ", "dʒ", "t͡ʃ", "d͡ʒ", "t͜ʃ", "d͜ʒ", "ʤ",
         )
     ),
@@ -77,7 +78,7 @@ CONSONANTS = {
             "ɸ", "ɹ", "ɺ", "ɽ", "ɾ", "ʀ", "ʁ", "ʂ", "ʃ", "ʈ", "ʋ", "ʎ",
             "ʑ", "ʒ", "ʔ", "ʕ", "ʝ", "ʟ", "ʙ", "θ", "χ", "ŋ", "pf", "ts",
             "tʃ", "dʒ", "p͡f", "t͡s", "t͡ʃ", "d͡ʒ", "p͜f", "t͜s", "t͜ʃ",
-            "d͜ʒ", "ʦ", "ʧ",
+            "d͜ʒ", "ʦ", "ʧ", "ǀ", "ǁ", "ǃ",
         )
     ),
     "tr": frozenset(
@@ -87,7 +88,7 @@ CONSONANTS = {
             "ɡ", "ɣ", "ɥ", "ɦ", "ɫ", "ɰ", "ɱ", "ɲ", "ɳ", "ɸ", "ɹ", "ɾ", "ł",
             "ʀ", "ʁ", "ʃ", "ʈ", "ʋ", "ʎ", "ʑ", "ʐ", "ʒ", "ʔ", "ʕ", "ʝ",
             "θ", "χ", "ŋ", "tʃ", "dʒ", "t͡ʃ", "d͡ʒ", "t͜ʃ", "d͜ʒ", "ʧ",
-            "ʤ",
+            "ʤ", "ǀ", "ǁ", "ǃ",
         )
     ),
 }
@@ -97,7 +98,7 @@ CONSONANTS = {
 POSTFIX_MODIFIERS = frozenset(
     (
         ":", "ː", "ˑ", "̆", "̯", "̃", "̥", "̬", "̩", "̪", "̺", "̻", "̝", "̞",
-        "̘", "̙", "̚", "̰", "̤", "̹", "̜", "̟", "̠", "̼", "̽", "ʰ", "ʷ",
+        "̘", "̙", "̚", "̰", "̤", "̹", "̜", "̟", "̠", "̼", "̽",
         "ˀ", "˔", "˭", "ʰ", "ʱ", "ʲ", "ˠ", "ˤ", "ʴ", "ʷ", "ⁿ", "ˡ",
         "˞", "ᵈ", "ᵏ", "ᵝ",
     )
@@ -162,7 +163,7 @@ def is_postfix_modifier(character: str) -> bool:
 
 
 def tokenize_ipa(
-    ipa: str, lang_code: str, unknown: Counter[str] | None = None
+    ipa: str, lang_code: str, unknown: Optional[Counter[str]] = None
 ) -> list[str]:
     """Return phoneme/stress tokens, preserving and reporting unknown clusters."""
     ipa = unicodedata.normalize("NFC", ipa.strip())
@@ -344,7 +345,7 @@ def build_database(
     row_count = 0
     fallback_count = 0
     progress = ProgressBar(input_path.stat().st_size)
-    connection: sqlite3.Connection | None = None
+    connection: Optional[sqlite3.Connection] = None
 
     try:
         connection = sqlite3.connect(part_path)
