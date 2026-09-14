@@ -235,17 +235,19 @@ Repeat this for German and Turkish. Cleanup is pronunciation-specific: if one
 IPA variant is malformed, other usable variants for the same word remain. A
 word is omitted only when none of its pronunciations survives.
 
-The `rhyme-cleanup-v2` policy:
+The `rhyme-cleanup-v3` policy:
 
-- requires the entire headword to consist of alphanumeric segments using its
-  language's standard alphabet plus ASCII digits. English permits `A-Z/a-z`;
-  German adds `ÄÖÜäöüßẞ`; Turkish permits its exact 29-letter alphabet
-  (`ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ` and lowercase equivalents). A single ASCII
-  hyphen or apostrophe may connect segments, retaining forms such as
-  `state-of-the-art` and `7'nci`. Spaces, leading/trailing or repeated
-  connectors, Braille, dotted-circle notation, enclosed letters, other
-  symbols, and emoji are excluded from the product dictionary. They remain in
-  the canonical wordlists;
+- permits Latin-script letters, including accented letters and ligatures, in
+  English and German loanwords. The click letters `ǀǁǂǃ` and r rotunda
+  `ꝛ`/`Ꝛ` remain explicitly excluded. Turkish permits its 29-letter alphabet,
+  `ÂâÎîÛû`, and `QqWwXx` for established spellings, proper names, and technical
+  loans;
+- normalizes typographic apostrophes to ASCII `'`, Unicode dash connectors to
+  ASCII `-`, subscript digits to ASCII digits, and removes invisible soft
+  hyphens. The result must consist of alphanumeric segments joined by single
+  internal hyphens or apostrophes, retaining `state-of-the-art` and `7'nci`.
+  Spaces, leading/trailing or repeated connectors, Braille, dotted-circle
+  notation, enclosed letters, other symbols, and emoji remain excluded;
 - splits unambiguous alternatives joined by `~` into separate IPA values;
 - expands balanced, non-nested optional groups such as `[dɔ(ː)ɡ]` into
   `[dɔɡ]` and `[dɔːɡ]`, capped at eight variants;
@@ -264,12 +266,17 @@ wordlist_en_rhyme_eligible.txt
 wordlist_en_rhyme_eligible_rejected.jsonl
 wordlist_en_rhyme_eligible_rejected_words.jsonl
 wordlist_en_rhyme_eligible_changes.jsonl
+wordlist_en_rhyme_eligible_word_changes.jsonl
 wordlist_en_rhyme_eligible_report.json
 ```
 
 Rejection rows preserve the word, original IPA, reason, and details.
 Word-rejection rows preserve the original headword, all its pronunciations,
 the rejection reason, and rejected-character counts with Unicode code points.
+Headword-change rows preserve original and normalized spellings, all
+pronunciations, and applied normalizations. If multiple source spellings
+normalize to one product headword, their pronunciation arrays are merged and
+deduplicated.
 Transformation rows preserve the original IPA and every normalized output.
 The summary contains input/output totals, counts by rejection and
 transformation reason, and the cleanup policy version. These artifacts make
