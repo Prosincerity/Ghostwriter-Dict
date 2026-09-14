@@ -26,7 +26,7 @@ from typing import Iterable, Optional, TextIO
 LANGUAGES = ("en", "de", "tr")
 PRIMARY_STRESS = "ˈ"
 STRESS_MARKERS = frozenset((PRIMARY_STRESS, "ˌ"))
-IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩|-‿_")
+IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩⁽⁾|-‿_⁀‖⫽︎")
 
 # These inventories are an audited representation of phonemes occurring in
 # the English, German, and Turkish Kaikki-derived wordlists, including common
@@ -46,7 +46,7 @@ VOWELS = {
         (
             "a", "e", "i", "o", "u", "y", "æ", "ɑ", "ɒ", "ɔ", "ə", "ɛ",
             "ɐ", "ɘ", "ɜ", "ɝ", "ɚ", "ɤ", "ɨ", "ɪ", "ɯ", "ɶ", "ɵ", "ʉ",
-            "ʊ", "ʌ", "ʏ", "ø", "œ", "aɪ", "aʊ", "ɔʏ", "oʏ", "ʊɪ",
+            "ʊ", "ʌ", "ʏ", "ø", "œ", "ᵊ", "aɪ", "aʊ", "ɔʏ", "oʏ", "ʊɪ",
         )
     ),
     "tr": frozenset(
@@ -64,7 +64,7 @@ CONSONANTS = {
             "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r",
             "q", "s", "t", "v", "w", "x", "z", "ç", "ð", "β", "ɓ", "ɕ", "ɖ",
             "ɗ", "ɟ", "ɢ", "ɡ", "ɣ", "ɥ", "ɦ", "ɫ", "ɬ", "ɭ", "ɱ", "ɲ",
-            "ɳ", "ɸ", "ɹ", "ɻ", "ɽ", "ɾ", "ʀ", "ʁ", "ʂ", "ʃ", "ʈ", "ʋ",
+            "ɳ", "ɸ", "ɹ", "ɺ", "ɻ", "ɽ", "ɾ", "ʀ", "ʁ", "ʂ", "ʃ", "ʈ", "ʋ",
             "ʎ", "ʑ", "ʒ", "ʔ", "ʕ", "ʝ", "ʟ", "ʙ", "ʍ", "θ", "χ", "ŋ", "ł",
             "ǀ", "ǁ", "ǃ",
             "tʃ", "dʒ", "t͡ʃ", "d͡ʒ", "t͜ʃ", "d͜ʒ", "ʤ",
@@ -77,6 +77,7 @@ CONSONANTS = {
             "ɕ", "ɟ", "ɡ", "ɣ", "ɥ", "ɦ", "ɫ", "ɬ", "ɮ", "ɱ", "ɲ", "ɴ",
             "ɸ", "ɹ", "ɺ", "ɽ", "ɾ", "ʀ", "ʁ", "ʂ", "ʃ", "ʈ", "ʋ", "ʎ",
             "ʑ", "ʒ", "ʔ", "ʕ", "ʝ", "ʟ", "ʙ", "θ", "χ", "ŋ", "pf", "ts",
+            "ħ", "ɰ",
             "tʃ", "dʒ", "p͡f", "t͡s", "t͡ʃ", "d͡ʒ", "p͜f", "t͜s", "t͜ʃ",
             "d͜ʒ", "ʦ", "ʧ", "ǀ", "ǁ", "ǃ",
         )
@@ -100,8 +101,24 @@ POSTFIX_MODIFIERS = frozenset(
         ":", "ː", "ˑ", "̆", "̯", "̃", "̥", "̬", "̩", "̪", "̺", "̻", "̝", "̞",
         "̘", "̙", "̚", "̰", "̤", "̹", "̜", "̟", "̠", "̼", "̽",
         "ˀ", "˔", "˭", "ʰ", "ʱ", "ʲ", "ˠ", "ˤ", "ʴ", "ʷ", "ⁿ", "ˡ",
-        "˞", "ᵈ", "ᵏ", "ᵝ",
+        "˞", "ʳ", "ʵ", "ʶ", "ˣ", "˕", "˖", "ᵈ", "ᵏ", "ᵐ", "ᵝ", "ᶦ", "ᶴ",
     )
+)
+
+# These spacing modifier letters can legitimately precede a phoneme at a word,
+# syllable, or stress boundary. The tokenizer attaches them to the following
+# inventory phoneme instead of treating them as independent characters.
+PREFIX_MODIFIERS = frozenset(
+    ("ˀ", "ʰ", "ʱ", "ʲ", "ˠ", "ˤ", "ʷ", "ⁿ", "ˡ", "ᵈ", "ᵏ", "ᵐ")
+)
+
+# Lexical tone and intonation marks are meaningful prosody, not phonemes or
+# unknown data. Preserve them as explicit tokens so a release audit can accept
+# valid tonal transcriptions without teaching the vowel classifier that they
+# are vowels. Boundary-safe spaces in the derived columns keep these tokens
+# distinguishable during prefix matching.
+PROSODY_MARKERS = frozenset(
+    ("˥", "˦", "˧", "˨", "˩", "¹", "²", "³", "⁴", "⁵", "⁻", "↗", "↘", "↑", "↓", "ꜛ", "ꜜ")
 )
 
 SCHEMA = """
@@ -172,15 +189,53 @@ def tokenize_ipa(
     known_single_bases = {value for value in candidates if len(value) == 1}
     tokens: list[str] = []
     position = 0
+    at_boundary = True
 
     while position < len(ipa):
         character = ipa[position]
         if character in IGNORED_SEPARATORS:
             position += 1
+            at_boundary = True
             continue
         if character in STRESS_MARKERS:
             tokens.append(character)
             position += 1
+            at_boundary = True
+            continue
+        if character in PROSODY_MARKERS:
+            tokens.append(character)
+            position += 1
+            at_boundary = True
+            continue
+
+        if is_postfix_modifier(character):
+            modifier_end = position + 1
+            while modifier_end < len(ipa) and is_postfix_modifier(ipa[modifier_end]):
+                modifier_end += 1
+            modifiers = ipa[position:modifier_end]
+            following = next(
+                (value for value in candidates if ipa.startswith(value, modifier_end)),
+                None,
+            )
+            if at_boundary and character in PREFIX_MODIFIERS and following is not None:
+                position = modifier_end + len(following)
+                token = modifiers + following
+                while position < len(ipa) and is_postfix_modifier(ipa[position]):
+                    token += ipa[position]
+                    position += 1
+                tokens.append(token)
+                at_boundary = False
+                continue
+            if tokens and tokens[-1] not in STRESS_MARKERS | PROSODY_MARKERS:
+                tokens[-1] += modifiers
+                position = modifier_end
+                at_boundary = False
+                continue
+            if unknown is not None:
+                unknown[modifiers] += 1
+            tokens.append(modifiers)
+            position = modifier_end
+            at_boundary = False
             continue
 
         match = next(
@@ -203,6 +258,7 @@ def tokenize_ipa(
                     match += ipa[position]
                     position += 1
                 tokens.append(match)
+                at_boundary = False
                 continue
 
             end = position + 1
@@ -216,6 +272,7 @@ def tokenize_ipa(
             # known phoneme or dropping it would silently corrupt tail keys.
             tokens.append(match)
             position = end
+            at_boundary = False
             continue
 
         position += len(match)
@@ -223,14 +280,18 @@ def tokenize_ipa(
             match += ipa[position]
             position += 1
         tokens.append(match)
+        at_boundary = False
 
     return tokens
 
 
 def token_is_vowel(token: str, lang_code: str) -> bool:
-    if any(token.startswith(vowel) for vowel in VOWELS[lang_code]):
+    without_prefix = token
+    while without_prefix and without_prefix[0] in PREFIX_MODIFIERS:
+        without_prefix = without_prefix[1:]
+    if any(without_prefix.startswith(vowel) for vowel in VOWELS[lang_code]):
         return True
-    decomposed = unicodedata.normalize("NFD", token)
+    decomposed = unicodedata.normalize("NFD", without_prefix)
     return any(
         decomposed.startswith(unicodedata.normalize("NFD", vowel))
         for vowel in VOWELS[lang_code]

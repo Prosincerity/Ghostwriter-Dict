@@ -45,6 +45,24 @@ class PhonemeTokenizationTest(unittest.TestCase):
         )
         self.assertEqual(RHYME_DB.tokenize_ipa("/áː/", "tr"), ["áː"])
 
+    def test_prefix_and_detached_modifiers_and_boundaries(self):
+        self.assertEqual(
+            RHYME_DB.tokenize_ipa("/ʃe.ɾi.ˈˤat/", "tr"),
+            ["ʃ", "e", "ɾ", "i", "ˈ", "ˤa", "t"],
+        )
+        self.assertEqual(
+            RHYME_DB.tokenize_ipa("[ˈkɪtn ̩]", "en"),
+            ["ˈ", "k", "ɪ", "t", "n̩"],
+        )
+        self.assertEqual(
+            RHYME_DB.tokenize_ipa("[kɪnt⁀ʊnt ‖ ↗a]", "de"),
+            ["k", "ɪ", "n", "t", "ʊ", "n", "t", "↗", "a"],
+        )
+        self.assertEqual(
+            RHYME_DB.tokenize_ipa("⫽tai̯²⁴⁻²¹ p⁽ʲ⁾il↗︎⫽", "en"),
+            ["t", "a", "i̯", "²", "⁴", "⁻", "²", "¹", "pʲ", "i", "l", "↗"],
+        )
+
     def test_unknown_clusters_are_preserved_and_counted_per_language(self):
         for lang_code in RHYME_DB.LANGUAGES:
             with self.subTest(lang_code=lang_code):
