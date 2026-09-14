@@ -91,12 +91,12 @@ raw archives and current generated wordlists are retained. The `raw/` and
 The Wiktionary extraction build writes six UTF-8 files:
 
 ```text
-out/wordlist_en_ipa.txt
-out/wordlist_en_noipa.txt
-out/wordlist_de_ipa.txt
-out/wordlist_de_noipa.txt
-out/wordlist_tr_ipa.txt
-out/wordlist_tr_noipa.txt
+out/en/wordlist_en_ipa.txt
+out/en/wordlist_en_noipa.txt
+out/de/wordlist_de_ipa.txt
+out/de/wordlist_de_noipa.txt
+out/tr/wordlist_tr_ipa.txt
+out/tr/wordlist_tr_noipa.txt
 ```
 
 ### Words with IPA
@@ -134,17 +134,17 @@ python3 scripts/generate_espeak_ipa.py
 The script uses the `en`, `de`, and `tr` eSpeak NG voices and reads:
 
 ```text
-out/wordlist_en_noipa.txt
-out/wordlist_de_noipa.txt
-out/wordlist_tr_noipa.txt
+out/en/wordlist_en_noipa.txt
+out/de/wordlist_de_noipa.txt
+out/tr/wordlist_tr_noipa.txt
 ```
 
 It atomically creates or overwrites:
 
 ```text
-out/wordlist_en_espeak_ipa.txt
-out/wordlist_de_espeak_ipa.txt
-out/wordlist_tr_espeak_ipa.txt
+out/en/wordlist_en_espeak_ipa.txt
+out/de/wordlist_de_espeak_ipa.txt
+out/tr/wordlist_tr_espeak_ipa.txt
 ```
 
 Each output has the same one-word-per-line format as the extracted IPA files:
@@ -267,12 +267,12 @@ source so provenance remains explicit and each database can be distributed
 independently:
 
 ```text
-out/en_kaikki-en20260902-de20260901-tr20260901.db
-out/en_espeak_kaikki-en20260902-de20260901-tr20260901.db
-out/de_kaikki-en20260902-de20260901-tr20260901.db
-out/de_espeak_kaikki-en20260902-de20260901-tr20260901.db
-out/tr_kaikki-en20260902-de20260901-tr20260901.db
-out/tr_espeak_kaikki-en20260902-de20260901-tr20260901.db
+out/en/en_kaikki-en20260902-de20260901-tr20260901.db
+out/en/en_espeak_kaikki-en20260902-de20260901-tr20260901.db
+out/de/de_kaikki-en20260902-de20260901-tr20260901.db
+out/de/de_espeak_kaikki-en20260902-de20260901-tr20260901.db
+out/tr/tr_kaikki-en20260902-de20260901-tr20260901.db
+out/tr/tr_espeak_kaikki-en20260902-de20260901-tr20260901.db
 ```
 
 Replace the example dates with the Wiktionary dump dates recorded by Kaikki
@@ -288,13 +288,13 @@ Run the builder once for each desired input, passing its language explicitly:
 
 ```bash
 python3 scripts/generate_rhyme_db.py \
-  out/wordlist_en_ipa.txt \
-  out/en_kaikki-en20260902-de20260901-tr20260901.db \
+  out/en/wordlist_en_ipa.txt \
+  out/en/en_kaikki-en20260902-de20260901-tr20260901.db \
   --lang-code en \
   --release-version kaikki-en20260902-de20260901-tr20260901
 python3 scripts/generate_rhyme_db.py \
-  out/wordlist_en_espeak_ipa.txt \
-  out/en_espeak_kaikki-en20260902-de20260901-tr20260901.db \
+  out/en/wordlist_en_espeak_ipa.txt \
+  out/en/en_espeak_kaikki-en20260902-de20260901-tr20260901.db \
   --lang-code en \
   --release-version kaikki-en20260902-de20260901-tr20260901
 ```
@@ -350,7 +350,7 @@ separate from the lightweight automated suite. Run it only after those tests
 pass:
 
 ```bash
-python3 test/scripts/run_rhyme_smoke_test.py \
+python3 tests/scripts/run_rhyme_smoke_test.py \
   --sample-size 50000 \
   --release-version kaikki-en20260902-de20260901-tr20260901
 ```
@@ -362,10 +362,11 @@ are unchanged. If a wordlist contains fewer rows, all its rows are selected.
 Use `--source espeak` to test eSpeak wordlists and repeat `--source` to test
 both sources.
 
-Generated samples are stored in `test/out/samples/`, databases in
-`test/out/databases/`, and build details in `test/out/smoke_manifest.json`.
-The complete `test/out/` tree is ignored by Git because it contains generated,
-CC BY-SA dictionary data and should be regenerated for each release.
+Generated samples are stored in `out/<lang>/samples/`, sampled databases in
+`out/<lang>/databases/`, and build details in
+`out/<lang>/smoke_manifest.json`. The complete `out/` tree is ignored by Git
+because it contains generated CC BY-SA dictionary data and should be
+regenerated for each release.
 
 ### Known rhyme-matching limitation
 
