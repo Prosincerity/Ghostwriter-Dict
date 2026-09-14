@@ -87,7 +87,7 @@ class RhymeSmokeTestTest(unittest.TestCase):
                 )
             )
             self.assertEqual(manifest["language"], "en")
-            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v1")
+            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v2")
             self.assertEqual(manifest["release_version"], "fixture-release")
             self.assertEqual(manifest["sample_size"], 5)
             self.assertEqual(manifest["results"][0]["integrity"], "ok")
