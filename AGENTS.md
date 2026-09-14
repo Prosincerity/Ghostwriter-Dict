@@ -21,10 +21,11 @@ Read `README.md` before making substantial changes.
   indexes from the pronunciation wordlists.
 - `tests/` contains synthetic tests that do not require the real datasets or an
   installed eSpeak NG binary.
-- `test/scripts/run_rhyme_smoke_test.py` creates deterministic local samples
-  and validates sampled databases; its generated `test/out/` tree is ignored.
+- `tests/scripts/run_rhyme_smoke_test.py` creates deterministic local samples
+  and validates sampled databases below `out/<lang>/`.
 - `raw/` contains multi-gigabyte source archives and HTTP `ETag` sidecars.
-- `out/` contains generated wordlists and, eventually, the SQLite database.
+- `out/<lang>/` contains that language's generated wordlists, SQLite databases,
+  and optional smoke-test artifacts.
 
 ## Large-file safety
 
@@ -63,9 +64,9 @@ Read `README.md` before making substantial changes.
 Wiktionary IPA files are named:
 
 ```text
-out/wordlist_en_ipa.txt
-out/wordlist_de_ipa.txt
-out/wordlist_tr_ipa.txt
+out/en/wordlist_en_ipa.txt
+out/de/wordlist_de_ipa.txt
+out/tr/wordlist_tr_ipa.txt
 ```
 
 They contain exactly one UTF-8 TSV row per word. The second field is a compact
@@ -77,13 +78,14 @@ hammer\t["/ˈhæmə/","/ˈhæmɚ/"]
 
 Do not change this to repeated word rows or a custom IPA delimiter.
 
-Missing-IPA files are named `wordlist_<lang>_noipa.txt` and contain one unique
-word per line. A word belongs there only if no supplied dump provides usable
-IPA for it.
+Missing-IPA files are named `out/<lang>/wordlist_<lang>_noipa.txt` and contain
+one unique word per line. A word belongs there only if no supplied dump
+provides usable IPA for it.
 
-eSpeak-generated files are named `wordlist_<lang>_espeak_ipa.txt` and use the
-same one-word/JSON-array TSV format. Keep them separate from Wiktionary IPA so
-the pronunciation provenance remains identifiable.
+eSpeak-generated files are named
+`out/<lang>/wordlist_<lang>_espeak_ipa.txt` and use the same
+one-word/JSON-array TSV format. Keep them separate from Wiktionary IPA so the
+pronunciation provenance remains identifiable.
 
 ## IPA handling
 
