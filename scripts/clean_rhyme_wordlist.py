@@ -14,9 +14,21 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
 
 
-POLICY_VERSION = "rhyme-cleanup-v1"
+POLICY_VERSION = "rhyme-cleanup-v2"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
+HEADWORD_CONNECTORS = frozenset("-'")
+HEADWORD_ALPHABETS = {
+    "en": frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
+    "de": frozenset(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÄÖÜäöüßẞ0123456789"
+    ),
+    "tr": frozenset(
+        "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
+        "abcçdefgğhıijklmnoöprsştuüvyz"
+        "0123456789"
+    ),
+}
 
 
 class ProgressBar:
@@ -55,9 +67,44 @@ def output_paths(output_path: Path) -> dict[str, Path]:
     return {
         "wordlist": output_path,
         "rejected": stem.with_name(f"{stem.name}_rejected.jsonl"),
+        "rejected_words": stem.with_name(f"{stem.name}_rejected_words.jsonl"),
         "changes": stem.with_name(f"{stem.name}_changes.jsonl"),
         "report": stem.with_name(f"{stem.name}_report.json"),
     }
+
+
+def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]:
+    """Describe a product-ineligible headword, or return ``None``."""
+    alphabet = HEADWORD_ALPHABETS[lang_code]
+    invalid = Counter()
+    for index, character in enumerate(word):
+        if character in alphabet:
+            continue
+        connector_is_internal = (
+            character in HEADWORD_CONNECTORS
+            and index > 0
+            and index + 1 < len(word)
+            and word[index - 1] in alphabet
+            and word[index + 1] in alphabet
+        )
+        if not connector_is_internal:
+            invalid[character] += 1
+    if not invalid:
+        return None
+    characters = [
+        {
+            "character": character,
+            "codepoint": f"U+{ord(character):04X}",
+            "count": count,
+        }
+        for character, count in sorted(invalid.items())
+    ]
+    reason = (
+        "combining_form"
+        if word.startswith("-") or word.endswith("-")
+        else "disallowed_headword_characters"
+    )
+    return {"reason": reason, "details": {"invalid_characters": characters}}
 
 
 def wrapper(value: str) -> Optional[tuple[str, str, str]]:
@@ -220,6 +267,7 @@ def clean_wordlist(
 
     counts = Counter()
     rejection_reasons: Counter[str] = Counter()
+    word_rejection_reasons: Counter[str] = Counter()
     transformation_reasons: Counter[str] = Counter()
     bytes_processed = 0
     progress = ProgressBar(input_path.stat().st_size)
@@ -229,6 +277,9 @@ def clean_wordlist(
             input_path.open("r", encoding="utf-8") as source,
             part_paths["wordlist"].open("w", encoding="utf-8", newline="\n") as output,
             part_paths["rejected"].open("w", encoding="utf-8", newline="\n") as rejected,
+            part_paths["rejected_words"].open(
+                "w", encoding="utf-8", newline="\n"
+            ) as rejected_words,
             part_paths["changes"].open("w", encoding="utf-8", newline="\n") as changes,
         ):
             for line_number, line in enumerate(source, start=1):
@@ -238,18 +289,30 @@ def clean_wordlist(
                 counts["input_pronunciations"] += len(ipas)
                 eligible: list[str] = []
 
-                if word.startswith("-") or word.endswith("-"):
+                word_rejection = headword_rejection(word, lang_code)
+                if word_rejection:
+                    word_row = {
+                        "ipas": ipas,
+                        "policy_version": POLICY_VERSION,
+                        "reason": word_rejection["reason"],
+                        "details": word_rejection["details"],
+                        "word": word,
+                    }
+                    write_json_line(rejected_words, word_row)
+                    counts["rejected_words"] += 1
+                    word_rejection_reasons[str(word_rejection["reason"])] += 1
                     for ipa in ipas:
                         write_json_line(
                             rejected,
                             {
+                                "details": word_rejection["details"],
                                 "ipa": ipa,
                                 "policy_version": POLICY_VERSION,
-                                "reason": "combining_form",
+                                "reason": word_rejection["reason"],
                                 "word": word,
                             },
                         )
-                        rejection_reasons["combining_form"] += 1
+                        rejection_reasons[str(word_rejection["reason"])] += 1
                         counts["rejected_candidates"] += 1
                 else:
                     for ipa in ipas:
@@ -312,6 +375,9 @@ def clean_wordlist(
             "output": str(output_path),
             "policy_version": POLICY_VERSION,
             "rejection_reasons": dict(sorted(rejection_reasons.items())),
+            "word_rejection_reasons": dict(
+                sorted(word_rejection_reasons.items())
+            ),
             "transformation_reasons": dict(sorted(transformation_reasons.items())),
         }
         with part_paths["report"].open(
@@ -319,7 +385,7 @@ def clean_wordlist(
         ) as report_file:
             json.dump(report, report_file, ensure_ascii=False, indent=2, sort_keys=True)
             report_file.write("\n")
-        for name in ("wordlist", "rejected", "changes", "report"):
+        for name in ("wordlist", "rejected", "rejected_words", "changes", "report"):
             os.replace(part_paths[name], paths[name])
         return report
     except BaseException:

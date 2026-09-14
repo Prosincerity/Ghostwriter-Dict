@@ -60,6 +60,44 @@ class PronunciationCleanupTest(unittest.TestCase):
         )
 
 
+class HeadwordCleanupTest(unittest.TestCase):
+    def test_language_alphabets_and_ascii_digits_are_allowed(self):
+        examples = {
+            "en": "state-of-the-art",
+            "de": "Über-Größe2026",
+            "tr": "7'nci",
+        }
+        for lang_code, word in examples.items():
+            with self.subTest(lang_code=lang_code):
+                self.assertIsNone(CLEANER.headword_rejection(word, lang_code))
+
+    def test_reported_examples_are_rejected_with_exact_characters(self):
+        examples = {
+            "de": ["ǃXóõs", "⁊c.", "◌̈", "◌͝◌", "♥-lichen", "ꝛc.", "🄰"],
+            "en": ["⠆", "⠇⠗", "⠈⠒⠏", "🔛🔝", "🚂🦵"],
+            "tr": ["◌̧"],
+        }
+        for lang_code, words in examples.items():
+            for word in words:
+                with self.subTest(lang_code=lang_code, word=word):
+                    rejection = CLEANER.headword_rejection(word, lang_code)
+                    self.assertIsNotNone(rejection)
+                    self.assertEqual(
+                        rejection["reason"], "disallowed_headword_characters"
+                    )
+                    self.assertTrue(rejection["details"]["invalid_characters"])
+
+    def test_spaces_and_invalid_connector_positions_are_rejected(self):
+        for word in ("two words", "-casting", "anti-", "state--art", "'word"):
+            with self.subTest(word=word):
+                self.assertIsNotNone(CLEANER.headword_rejection(word, "en"))
+
+    def test_internal_hyphens_and_apostrophes_are_allowed(self):
+        for word in ("mother-in-law", "don't", "state-of-the-art"):
+            with self.subTest(word=word):
+                self.assertIsNone(CLEANER.headword_rejection(word, "en"))
+
+
 class WordlistCleanupTest(unittest.TestCase):
     def test_writes_eligible_wordlist_and_audit_sidecars(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -69,7 +107,11 @@ class WordlistCleanupTest(unittest.TestCase):
             rows = [
                 ("-casting", ["/ˈkɑːstɪŋ/"]),
                 ("anti-", ["/ˈænti/"]),
+                ("♥-lichen", ["/ˈlɪtʃən/"]),
                 ("mother-in-law", ["/ˈmʌðɚɪnlɔː/"]),
+                ("state-of-the-art", ["/ˌsteɪtəvðiˈɑɹt/"]),
+                ("7'nci", ["/jeˈdindʒi/"]),
+                ("Word2026", ["/ˈwɝd/"]),
                 ("variants", ["/'vɛəriənts/", "/bad…/", "/vɛər(i)ənts/"]),
                 ("tones", ["/toʊn˦˨/"]),
             ]
@@ -88,13 +130,18 @@ class WordlistCleanupTest(unittest.TestCase):
                 parsed[word] = json.loads(encoded)
             self.assertNotIn("-casting", parsed)
             self.assertNotIn("anti-", parsed)
+            self.assertNotIn("♥-lichen", parsed)
             self.assertIn("mother-in-law", parsed)
+            self.assertIn("state-of-the-art", parsed)
+            self.assertIn("7'nci", parsed)
+            self.assertIn("Word2026", parsed)
             self.assertEqual(
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v1")
-            self.assertEqual(report["counts"]["eligible_words"], 3)
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v2")
+            self.assertEqual(report["counts"]["eligible_words"], 6)
+            self.assertEqual(report["counts"]["rejected_words"], 3)
 
             paths = CLEANER.output_paths(output)
             rejects = [
@@ -103,7 +150,24 @@ class WordlistCleanupTest(unittest.TestCase):
             ]
             self.assertEqual(
                 {row["reason"] for row in rejects},
-                {"combining_form", "incomplete_pronunciation"},
+                {
+                    "combining_form",
+                    "disallowed_headword_characters",
+                    "incomplete_pronunciation",
+                },
+            )
+            rejected_words = [
+                json.loads(line)
+                for line in paths["rejected_words"]
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(
+                {row["word"] for row in rejected_words},
+                {"-casting", "anti-", "♥-lichen"},
+            )
+            self.assertTrue(
+                all(row["details"]["invalid_characters"] for row in rejected_words)
             )
             changes = [
                 json.loads(line)
