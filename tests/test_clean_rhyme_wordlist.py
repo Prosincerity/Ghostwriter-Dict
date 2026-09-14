@@ -63,9 +63,9 @@ class PronunciationCleanupTest(unittest.TestCase):
 class HeadwordCleanupTest(unittest.TestCase):
     def test_language_alphabets_and_ascii_digits_are_allowed(self):
         examples = {
-            "en": "state-of-the-art",
-            "de": "Über-Größe2026",
-            "tr": "7'nci",
+            "en": "cliché-state-of-the-art",
+            "de": "Pokémon-Übergröße2026",
+            "tr": "hâlâ-QWX-7'nci",
         }
         for lang_code, word in examples.items():
             with self.subTest(lang_code=lang_code):
@@ -97,6 +97,17 @@ class HeadwordCleanupTest(unittest.TestCase):
             with self.subTest(word=word):
                 self.assertIsNone(CLEANER.headword_rejection(word, "en"))
 
+    def test_search_oriented_headword_normalization(self):
+        examples = {
+            "d’accord": ("d'accord", ["normalize_apostrophe"]),
+            "May–December": ("May-December", ["normalize_dash"]),
+            "CO₂": ("CO2", ["normalize_subscript_digit"]),
+            "soft\N{SOFT HYPHEN}ware": ("software", ["remove_soft_hyphen"]),
+        }
+        for original, expected in examples.items():
+            with self.subTest(original=original):
+                self.assertEqual(CLEANER.normalize_headword(original), expected)
+
 
 class WordlistCleanupTest(unittest.TestCase):
     def test_writes_eligible_wordlist_and_audit_sidecars(self):
@@ -111,6 +122,10 @@ class WordlistCleanupTest(unittest.TestCase):
                 ("mother-in-law", ["/ˈmʌðɚɪnlɔː/"]),
                 ("state-of-the-art", ["/ˌsteɪtəvðiˈɑɹt/"]),
                 ("7'nci", ["/jeˈdindʒi/"]),
+                ("can't", ["/kænt/"]),
+                ("can’t", ["/kɑnt/"]),
+                ("CO₂", ["/siːoʊˈtuː/"]),
+                ("soft\N{SOFT HYPHEN}ware", ["/ˈsɔftwɛr/"]),
                 ("Word2026", ["/ˈwɝd/"]),
                 ("variants", ["/'vɛəriənts/", "/bad…/", "/vɛər(i)ənts/"]),
                 ("tones", ["/toʊn˦˨/"]),
@@ -134,13 +149,16 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn("mother-in-law", parsed)
             self.assertIn("state-of-the-art", parsed)
             self.assertIn("7'nci", parsed)
+            self.assertEqual(parsed["can't"], ["/kænt/", "/kɑnt/"])
+            self.assertIn("CO2", parsed)
+            self.assertIn("software", parsed)
             self.assertIn("Word2026", parsed)
             self.assertEqual(
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v2")
-            self.assertEqual(report["counts"]["eligible_words"], 6)
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v3")
+            self.assertEqual(report["counts"]["eligible_words"], 9)
             self.assertEqual(report["counts"]["rejected_words"], 3)
 
             paths = CLEANER.output_paths(output)
@@ -169,6 +187,16 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertTrue(
                 all(row["details"]["invalid_characters"] for row in rejected_words)
             )
+            word_changes = [
+                json.loads(line)
+                for line in paths["word_changes"]
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(
+                {row["original_word"] for row in word_changes},
+                {"can’t", "CO₂", "soft\N{SOFT HYPHEN}ware"},
+            )
             changes = [
                 json.loads(line)
                 for line in paths["changes"].read_text(encoding="utf-8").splitlines()
@@ -179,6 +207,7 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertTrue(
                 all(not Path(f"{path}.part").exists() for path in paths.values())
             )
+            self.assertFalse(Path(f"{output}.rows.part").exists())
 
     def test_failure_preserves_all_previous_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
