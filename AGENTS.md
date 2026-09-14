@@ -98,17 +98,21 @@ named `wordlist_<lang>_rhyme_eligible.txt` and
 pronunciation independently: keep usable variants for a word even when another
 variant is rejected, and omit the word only when no variants survive.
 
-The cleanup policy is versioned as `rhyme-cleanup-v2` and must be recorded in
+The cleanup policy is versioned as `rhyme-cleanup-v3` and must be recorded in
 its report and database release metadata. It currently:
 
-- requires the complete headword to consist of alphanumeric segments using
-  that language's standard alphabet plus ASCII digits: `A-Z/a-z` for English;
-  `A-Z/a-z`, umlauts, and `ß`/`ẞ` for German; and the 29 Turkish letters for
-  Turkish. Single ASCII hyphens and apostrophes may connect segments, so
-  `state-of-the-art` and `7'nci` remain eligible. Whitespace, leading/trailing
-  or repeated connectors, Braille, dotted-circle notation, enclosed letters,
-  other symbols, and emoji are excluded from the product dictionary while
-  remaining in the canonical wordlists;
+- permits Latin-script letters, including accented letters and ligatures, for
+  English and German loanwords. The click letters `ǀǁǂǃ` and r rotunda `ꝛ`/`Ꝛ`
+  remain explicitly excluded. Turkish permits its 29-letter alphabet,
+  `ÂâÎîÛû`, and `QqWwXx` for established spellings, proper names, and technical
+  loans;
+- normalizes typographic apostrophes to ASCII `'`, Unicode dash connectors to
+  ASCII `-`, subscript digits to ASCII digits, and removes soft hyphens. After
+  normalization, a headword must consist of alphanumeric segments connected by
+  single internal hyphens or apostrophes. Thus `state-of-the-art` and `7'nci`
+  remain eligible, while whitespace, leading/trailing or repeated connectors,
+  Braille, dotted-circle notation, enclosed letters, other symbols, and emoji
+  are excluded from the product dictionary;
 - splits unambiguous `~` pronunciation alternatives;
 - expands balanced, non-nested optional groups such as `(ː)`, with a strict
   maximum of eight generated variants;
@@ -120,12 +124,16 @@ its report and database release metadata. It currently:
   token still unrecognized after approved IPA modifiers are handled.
 
 Never silently discard or rewrite data. Alongside every eligible wordlist,
-write atomic JSONL pronunciation-rejection and transformation logs, a
-word-level rejection log, and a JSON summary with counts by reason.
+write atomic JSONL pronunciation-rejection and IPA-transformation logs, a
+word-level rejection log, a headword-transformation log, and a JSON summary
+with counts by reason.
 Transformation rows preserve both original and normalized IPA. Pronunciation
 rejection rows preserve word, original IPA, reason, and relevant details.
 Word-rejection rows preserve the original headword, all its IPA values, the
 reason, and every rejected character with its Unicode code point and count.
+Headword-transformation rows preserve the original and normalized spelling,
+all IPA values, and each applied normalization. Merge pronunciations when two
+source spellings normalize to the same product headword.
 
 ## IPA handling
 
