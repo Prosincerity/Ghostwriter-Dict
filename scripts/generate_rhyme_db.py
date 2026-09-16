@@ -24,8 +24,7 @@ from typing import Iterable, Optional, TextIO
 
 
 LANGUAGES = ("en", "de", "tr")
-PRIMARY_STRESS = "ˈ"
-STRESS_MARKERS = frozenset((PRIMARY_STRESS, "ˌ"))
+STRESS_MARKERS = frozenset(("ˈ", "ˌ"))
 IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩⁽⁾|-‿_⁀‖⫽︎")
 
 # These inventories are an audited representation of phonemes occurring in
@@ -126,7 +125,6 @@ CREATE TABLE dictionary (
     word TEXT NOT NULL,
     ipa TEXT NOT NULL,
     ipa_reversed TEXT NOT NULL,
-    rhyme_key_reversed TEXT NOT NULL,
     assonance_reversed TEXT NOT NULL,
     PRIMARY KEY (word, ipa)
 ) WITHOUT ROWID;
@@ -134,7 +132,6 @@ CREATE TABLE dictionary (
 
 INDEXES = """
 CREATE INDEX idx_ipa_reversed ON dictionary(ipa_reversed);
-CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
 CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 """
 
@@ -269,7 +266,7 @@ def tokenize_ipa(
                 unknown[match] += 1
             # Unknown clusters stay visible in derived strings. Keeping them
             # and counting them is lossless; treating each code point as a
-            # known phoneme or dropping it would silently corrupt tail keys.
+            # known phoneme or dropping it would silently corrupt reversed values.
             tokens.append(match)
             position = end
             at_boundary = False
@@ -298,34 +295,11 @@ def token_is_vowel(token: str, lang_code: str) -> bool:
     )
 
 
-def derived_values(tokens: list[str], lang_code: str) -> tuple[str, str, str, bool]:
-    """Compute reversed full IPA, stress-anchored rhyme key, and assonance."""
+def derived_values(tokens: list[str], lang_code: str) -> tuple[str, str]:
+    """Compute reversed full IPA and its reversed vowel sequence."""
     ipa_reversed = " ".join(reversed(tokens))
-    vowel_positions = [
-        index for index, token in enumerate(tokens) if token_is_vowel(token, lang_code)
-    ]
-    stress_positions = [
-        index for index, token in enumerate(tokens) if token == PRIMARY_STRESS
-    ]
-    used_fallback = not stress_positions
-
-    rhyme_start = None
-    if stress_positions:
-        last_stress = stress_positions[-1]
-        rhyme_start = next(
-            (index for index in vowel_positions if index > last_stress), None
-        )
-    elif vowel_positions:
-        rhyme_start = vowel_positions[-1]
-
-    rhyme_tokens = tokens[rhyme_start:] if rhyme_start is not None else []
     vowel_tokens = [token for token in tokens if token_is_vowel(token, lang_code)]
-    return (
-        ipa_reversed,
-        " ".join(reversed(rhyme_tokens)),
-        " ".join(reversed(vowel_tokens)),
-        used_fallback,
-    )
+    return ipa_reversed, " ".join(reversed(vowel_tokens))
 
 
 def parse_wordlist_line(path: Path, line_number: int, line: str) -> tuple[str, list[str]]:
@@ -360,7 +334,7 @@ def iter_rows(
     lang_code: str,
     unknown: Counter[str],
     progress: ProgressBar,
-) -> Iterable[tuple[str, str, str, str, str, bool]]:
+) -> Iterable[tuple[str, str, str, str]]:
     lines = 0
     rows = 0
     bytes_processed = 0
@@ -370,11 +344,9 @@ def iter_rows(
             word, ipas = parse_wordlist_line(input_path, lines, line)
             for ipa in ipas:
                 tokens = tokenize_ipa(ipa, lang_code, unknown)
-                ipa_reversed, rhyme_key, assonance, fallback = derived_values(
-                    tokens, lang_code
-                )
+                ipa_reversed, assonance = derived_values(tokens, lang_code)
                 rows += 1
-                yield word, ipa, ipa_reversed, rhyme_key, assonance, fallback
+                yield word, ipa, ipa_reversed, assonance
             if lines % 1_000 == 0:
                 progress.update(bytes_processed, lines, rows)
         progress.update(input_path.stat().st_size, lines, rows)
@@ -393,7 +365,7 @@ def validate_release_version(release_version: str, output_path: Path) -> None:
 
 def build_database(
     input_path: Path, output_path: Path, lang_code: str, release_version: str
-) -> tuple[int, int, int, Counter[str]]:
+) -> tuple[int, int, Counter[str]]:
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
     if output_path.suffix != ".db":
@@ -404,7 +376,6 @@ def build_database(
     part_path.unlink(missing_ok=True)
     unknown: Counter[str] = Counter()
     row_count = 0
-    fallback_count = 0
     progress = ProgressBar(input_path.stat().st_size)
     connection: Optional[sqlite3.Connection] = None
 
@@ -413,18 +384,15 @@ def build_database(
         connection.execute("PRAGMA journal_mode = OFF")
         connection.execute("PRAGMA synchronous = OFF")
         connection.executescript(SCHEMA)
-        insert = "INSERT INTO dictionary VALUES (?, ?, ?, ?, ?)"
-        for word, ipa, ipa_reversed, rhyme_key, assonance, fallback in iter_rows(
+        insert = "INSERT INTO dictionary VALUES (?, ?, ?, ?)"
+        for word, ipa, ipa_reversed, assonance in iter_rows(
             input_path, lang_code, unknown, progress
         ):
             try:
-                connection.execute(
-                    insert, (word, ipa, ipa_reversed, rhyme_key, assonance)
-                )
+                connection.execute(insert, (word, ipa, ipa_reversed, assonance))
             except sqlite3.IntegrityError as error:
                 raise ValueError(f"duplicate (word, ipa) pair: {word!r}, {ipa!r}") from error
             row_count += 1
-            fallback_count += int(fallback)
 
         connection.executescript(INDEXES)
         connection.commit()
@@ -442,7 +410,7 @@ def build_database(
     finally:
         progress.finish()
 
-    return row_count, unique_words, fallback_count, unknown
+    return row_count, unique_words, unknown
 
 
 def parse_args() -> argparse.Namespace:
@@ -461,7 +429,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     try:
-        rows, words, fallback, unknown = build_database(
+        rows, words, unknown = build_database(
             args.input, args.output, args.lang_code, args.release_version
         )
     except (FileNotFoundError, OSError, sqlite3.Error, UnicodeError, ValueError) as error:
@@ -471,7 +439,6 @@ def main() -> None:
     print(f"Kaikki release       : {args.release_version}")
     print(f"Total rows           : {rows:,}")
     print(f"Unique words         : {words:,}")
-    print(f"No primary stress    : {fallback:,}")
     print(f"Unrecognized symbols : {sum(unknown.values()):,}")
     for symbol, count in sorted(unknown.items(), key=lambda item: (-item[1], item[0])):
         codepoints = " ".join(f"U+{ord(character):04X}" for character in symbol)
