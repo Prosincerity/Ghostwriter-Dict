@@ -87,13 +87,36 @@ class HeadwordCleanupTest(unittest.TestCase):
                     )
                     self.assertTrue(rejection["details"]["invalid_characters"])
 
-    def test_spaces_and_invalid_connector_positions_are_rejected(self):
-        for word in ("two words", "-casting", "anti-", "state--art", "'word"):
+    def test_structured_spaces_and_periods_are_allowed(self):
+        for word in (
+            "Victory Day",
+            "t.b.a",
+            "t.b.a.",
+            "Dr.",
+            "a. a. O.",
+            "high-definition television",
+        ):
+            with self.subTest(word=word):
+                self.assertIsNone(CLEANER.headword_rejection(word, "en"))
+
+    def test_malformed_punctuation_positions_are_rejected(self):
+        for word in (
+            " leading",
+            "trailing ",
+            "two  words",
+            ".word",
+            "word..word",
+            "word .",
+            "-casting",
+            "anti-",
+            "state--art",
+            "'word",
+        ):
             with self.subTest(word=word):
                 self.assertIsNotNone(CLEANER.headword_rejection(word, "en"))
 
     def test_internal_hyphens_and_apostrophes_are_allowed(self):
-        for word in ("mother-in-law", "don't", "state-of-the-art"):
+        for word in ("mother-in-law", "don't", "state-of-the-art", "losin'"):
             with self.subTest(word=word):
                 self.assertIsNone(CLEANER.headword_rejection(word, "en"))
 
@@ -127,6 +150,9 @@ class WordlistCleanupTest(unittest.TestCase):
                 ("CO₂", ["/siːoʊˈtuː/"]),
                 ("soft\N{SOFT HYPHEN}ware", ["/ˈsɔftwɛr/"]),
                 ("Word2026", ["/ˈwɝd/"]),
+                ("Victory Day", ["/ˈvɪktəri ˈdeɪ/"]),
+                ("t.b.a.", ["/ˌtiːbiːˈeɪ/"]),
+                ("losin’", ["/ˈluːzɪn/"]),
                 ("variants", ["/'vɛəriənts/", "/bad…/", "/vɛər(i)ənts/"]),
                 ("tones", ["/toʊn˦˨/"]),
             ]
@@ -153,15 +179,26 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn("CO2", parsed)
             self.assertIn("software", parsed)
             self.assertIn("Word2026", parsed)
+            self.assertIn("Victory Day", parsed)
+            self.assertIn("t.b.a.", parsed)
+            self.assertIn("losin'", parsed)
             self.assertEqual(
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v3")
-            self.assertEqual(report["counts"]["eligible_words"], 9)
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v5")
+            self.assertEqual(report["counts"]["eligible_words"], 12)
             self.assertEqual(report["counts"]["rejected_words"], 3)
 
             paths = CLEANER.output_paths(output)
+            self.assertEqual(paths["wordlist"], output)
+            self.assertTrue(
+                all(
+                    path.parent == root / "reports"
+                    for name, path in paths.items()
+                    if name != "wordlist"
+                )
+            )
             rejects = [
                 json.loads(line)
                 for line in paths["rejected"].read_text(encoding="utf-8").splitlines()
@@ -195,7 +232,7 @@ class WordlistCleanupTest(unittest.TestCase):
             ]
             self.assertEqual(
                 {row["original_word"] for row in word_changes},
-                {"can’t", "CO₂", "soft\N{SOFT HYPHEN}ware"},
+                {"can’t", "CO₂", "soft\N{SOFT HYPHEN}ware", "losin’"},
             )
             changes = [
                 json.loads(line)
@@ -216,6 +253,8 @@ class WordlistCleanupTest(unittest.TestCase):
             output = root / "eligible.txt"
             source.write_text('ok\t["/oʊˈkeɪ/"]\nbroken\tnot-json\n', encoding="utf-8")
             paths = CLEANER.output_paths(output)
+            for path in paths.values():
+                path.parent.mkdir(parents=True, exist_ok=True)
             for path in paths.values():
                 path.write_text("previous\n", encoding="utf-8")
             with self.assertRaises(ValueError):
