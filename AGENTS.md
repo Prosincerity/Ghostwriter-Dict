@@ -16,7 +16,8 @@ the data for product use, and creates versioned SQLite rhyme indexes. Read
 - `tests/`: small synthetic tests; `tests/scripts/run_rhyme_smoke_test.py` is
   the opt-in deterministic real-data smoke test.
 - `raw/`: large archives and ETag sidecars.
-- `out/<lang>/`: generated wordlists, reports, databases, and smoke artifacts.
+- `out/<lang>/`: generated wordlists, databases, and smoke artifacts;
+  reports and JSON/JSONL audit files live in `out/<lang>/reports/`.
 
 ## Safety and implementation conventions
 
@@ -69,7 +70,7 @@ separate to preserve provenance.
 
 ## Rhyme-product cleanup
 
-Never modify canonical lists in place. `rhyme-cleanup-v3` creates
+Never modify canonical lists in place. `rhyme-cleanup-v5` creates
 `wordlist_<lang>_rhyme_eligible.txt` or
 `wordlist_<lang>_espeak_rhyme_eligible.txt` and applies these rules:
 
@@ -78,9 +79,12 @@ Never modify canonical lists in place. `rhyme-cleanup-v3` creates
   `ÂâÎîÛû`, and `QqWwXx`. All languages allow ASCII digits.
 - Normalize `’`, `‘`, and `ʼ` to `'`; Unicode dash connectors to `-`;
   subscript digits to ASCII; and remove soft hyphens.
-- The normalized headword must contain alphanumeric segments joined only by a
-  single internal `-` or `'`. Reject spaces, edge/repeated connectors, Braille,
-  dotted-circle notation, enclosed letters, other symbols, and emoji.
+- The normalized headword may contain alphanumeric segments, single internal
+  `-` connectors, internal or terminal `'`, structured periods, and single
+  ASCII spaces between segments. Accept phrases, abbreviations, and elisions
+  such as `Victory Day`, `t.b.a.`, `a. a. O.`, and `losin'`. Reject malformed
+  punctuation, combining forms, Braille, dotted-circle notation, enclosed
+  letters, other symbols, and emoji.
 - Split unambiguous `~` IPA alternatives; expand balanced non-nested optional
   groups to at most eight variants; normalize IPA `'` to `ˈ` and `·` to `.`.
 - Reject IPA containing controls, incomplete ellipses, ambiguous commas,
@@ -90,7 +94,7 @@ Never modify canonical lists in place. `rhyme-cleanup-v3` creates
   word only if none survive. Merge and deduplicate IPA when normalized
   headwords collide.
 
-Every cleanup output has atomic sidecars: pronunciation rejections
+Every cleanup output has atomic audit files in `out/<lang>/reports/`: pronunciation rejections
 (`*_rejected.jsonl`), word rejections (`*_rejected_words.jsonl`), IPA changes
 (`*_changes.jsonl`), word changes (`*_word_changes.jsonl`), and a count report
 (`*_report.json`). Logs retain original values, normalized values where
@@ -116,13 +120,11 @@ CREATE TABLE dictionary (
     word TEXT NOT NULL,
     ipa TEXT NOT NULL,
     ipa_reversed TEXT NOT NULL,
-    rhyme_key_reversed TEXT NOT NULL,
     assonance_reversed TEXT NOT NULL,
     PRIMARY KEY (word, ipa)
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_ipa_reversed ON dictionary(ipa_reversed);
-CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
 CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
@@ -131,13 +133,11 @@ language inventory; never reverse raw characters or silently accept/drop
 unknown symbols. Derived values are space-delimited token sequences:
 
 - `ipa_reversed`: complete IPA tokens reversed.
-- `rhyme_key_reversed`: tokens from the vowel after the last primary stress
-  through the end, reversed; with no primary stress, start at the last vowel.
 - `assonance_reversed`: vowel-only tokens reversed.
 
-Stress anchoring is required; fixed-size tails over-match unstressed suffixes.
-Do not add consonance keys, fixed tails, syllable data, or syllabification.
-Create indexes after bulk insertion.
+Consumers derive rhyme prefixes from `ipa_reversed`; do not persist a separate
+rhyme key. Do not add consonance keys, fixed tails, syllable data, or
+syllabification. Create indexes after bulk insertion.
 
 Compound identity rhymes remain a documented limitation. A future on-device
 filter may reject long matching tails that are standalone dictionary words;

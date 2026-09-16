@@ -116,7 +116,7 @@ python3 scripts/clean_rhyme_wordlist.py \
   --lang-code en
 ```
 
-Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v3`, does the
+Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v5`, does the
 following:
 
 - English and German accept Latin letters, accents, and ligatures, except click
@@ -124,10 +124,12 @@ following:
   `ÂâÎîÛû`, and `QqWwXx`. ASCII digits are valid in every language.
 - Typographic apostrophes become `'`, Unicode dash connectors become `-`,
   subscript digits become ASCII digits, and soft hyphens are removed.
-- A normalized headword must consist of alphanumeric segments joined only by
-  one internal `-` or `'`. `state-of-the-art` and `7'nci` pass; spaces,
-  combining forms, malformed connectors, Braille, dotted-circle notation,
-  enclosed letters, other symbols, and emoji do not.
+- A normalized headword may contain alphanumeric segments, single internal
+  `-` connectors, internal or terminal `'`, structured periods, and single
+  ASCII spaces between segments. This admits phrases, abbreviations, and
+  elisions such as `Victory Day`, `t.b.a.`, `a. a. O.`, and `losin'` while
+  rejecting malformed punctuation, combining forms, Braille, dotted-circle
+  notation, enclosed letters, other symbols, and emoji.
 - Unambiguous `~` IPA alternatives are split; balanced non-nested optional
   groups expand to at most eight variants; IPA `'` becomes `ˈ` and `·` becomes
   `.`.
@@ -137,7 +139,8 @@ following:
 
 Pronunciations are validated independently, so valid variants survive a bad
 sibling. Normalized headword collisions are merged and their IPA deduplicated.
-Each eligible wordlist has these atomic audit sidecars:
+Each eligible wordlist has these atomic audit files under
+`out/<lang>/reports/`:
 
 ```text
 *_rejected.jsonl        pronunciation rejections
@@ -179,13 +182,11 @@ CREATE TABLE dictionary (
     word TEXT NOT NULL,
     ipa TEXT NOT NULL,
     ipa_reversed TEXT NOT NULL,
-    rhyme_key_reversed TEXT NOT NULL,
     assonance_reversed TEXT NOT NULL,
     PRIMARY KEY (word, ipa)
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_ipa_reversed ON dictionary(ipa_reversed);
-CREATE INDEX idx_rhyme_key_reversed ON dictionary(rhyme_key_reversed);
 CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
@@ -193,14 +194,13 @@ Each pronunciation becomes one row. IPA is tokenized with an audited
 per-language inventory before deriving space-delimited reversed values:
 
 - `ipa_reversed`: the complete phoneme sequence reversed.
-- `rhyme_key_reversed`: the sequence from the vowel after the last primary
-  stress through the end, reversed; without primary stress, it starts at the
-  last vowel.
 - `assonance_reversed`: the vowel-only sequence reversed.
 
 Spaces preserve phoneme boundaries for indexed prefix matching. Enable
 `PRAGMA case_sensitive_like = ON` when using SQLite `LIKE 'prefix%'` so these
-binary indexes can support prefix range scans.
+binary indexes can support prefix range scans. Consumers derive the desired
+rhyme prefix directly from `ipa_reversed`; the database does not persist a
+separate rhyme-key column or index.
 
 Indexes are created after bulk insertion. Unknown symbols are reported, and
 the destination is atomically replaced only after a successful build.
@@ -235,12 +235,13 @@ python3 tests/scripts/run_rhyme_smoke_test.py \
 
 The default seed is deterministic; unchanged input, seed, and release produce
 the same sample. Results are Git-ignored under `out/<lang>/samples/`,
-`out/<lang>/databases/`, and `out/<lang>/smoke_manifest.json`.
+`out/<lang>/databases/`, and `out/<lang>/reports/smoke_manifest.json`.
 
 ## Scope and known limitation
 
-The database intentionally has no consonance key, fixed-size tail columns,
-syllable count, syllable boundaries, or inferred syllabification.
+The database intentionally has no precomputed rhyme or consonance key,
+fixed-size tail columns, syllable count, syllable boundaries, or inferred
+syllabification.
 
 Compound identity rhymes are not filtered. For example, German compounds can
 match across a complete shared trailing morpheme. A future on-device filter may
@@ -254,7 +255,8 @@ exclude long matching tails that are standalone dictionary words.
 
 The data is transformed by language routing, merging, NFC normalization,
 deduplication, headword filtering/normalization, IPA extraction and cleanup,
-eSpeak generation, phoneme tokenization, and derived rhyme/assonance keys.
+eSpeak generation, phoneme tokenization, and derived reversed IPA/assonance
+values.
 Wiktionary and eSpeak outputs remain separately identified. Document new data
 sources and use compatible licensing. See [LICENSE](LICENSE) for the full
 repository licensing map.

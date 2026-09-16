@@ -22,7 +22,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 RHYME_DB_SCRIPT = PROJECT_DIR / "scripts" / "generate_rhyme_db.py"
 LANGUAGES = ("en", "de", "tr")
 SOURCES = ("wiktionary", "espeak")
-CLEANUP_POLICY_VERSION = "rhyme-cleanup-v3"
+CLEANUP_POLICY_VERSION = "rhyme-cleanup-v5"
 
 
 class ProgressBar:
@@ -198,7 +198,6 @@ def validate_database(database_path: Path, expected_words: int) -> dict[str, obj
             "word",
             "ipa",
             "ipa_reversed",
-            "rhyme_key_reversed",
             "assonance_reversed",
         ]
         if columns != expected_columns:
@@ -212,7 +211,6 @@ def validate_database(database_path: Path, expected_words: int) -> dict[str, obj
         }
         expected_indexes = {
             "idx_ipa_reversed",
-            "idx_rhyme_key_reversed",
             "idx_assonance_reversed",
         }
         if not expected_indexes.issubset(indexes):
@@ -230,25 +228,18 @@ def validate_database(database_path: Path, expected_words: int) -> dict[str, obj
         if rows < words:
             raise RuntimeError(f"database contains fewer rows ({rows:,}) than words")
 
-        shared_rhyme_key_groups = connection.execute(
-            "SELECT COUNT(*) FROM ("
-            "SELECT rhyme_key_reversed FROM dictionary "
-            "WHERE rhyme_key_reversed <> '' "
-            "GROUP BY rhyme_key_reversed HAVING COUNT(DISTINCT word) > 1"
-            ")"
-        ).fetchone()[0]
         return {
             "integrity": integrity,
             "rows": rows,
             "unique_words": words,
-            "shared_rhyme_key_groups": shared_rhyme_key_groups,
         }
     finally:
         connection.close()
 
 
 def write_manifest(output_root: Path, manifest: dict[str, object]) -> Path:
-    manifest_path = output_root / "smoke_manifest.json"
+    manifest_path = output_root / "reports" / "smoke_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     part_path = manifest_path.with_name(f"{manifest_path.name}.part")
     part_path.unlink(missing_ok=True)
     try:

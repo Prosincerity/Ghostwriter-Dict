@@ -81,16 +81,20 @@ class RhymeSmokeTestTest(unittest.TestCase):
             finally:
                 connection.close()
 
-            manifest = json.loads(
-                (first_output / "en" / "smoke_manifest.json").read_text(
-                    encoding="utf-8"
-                )
+            manifest_path = (
+                first_output / "en" / "reports" / "smoke_manifest.json"
             )
+            self.assertTrue(manifest_path.is_file())
+            self.assertFalse((first_output / "en" / "smoke_manifest.json").exists())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["language"], "en")
-            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v3")
+            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v5")
             self.assertEqual(manifest["release_version"], "fixture-release")
             self.assertEqual(manifest["sample_size"], 5)
             self.assertEqual(manifest["results"][0]["integrity"], "ok")
+            self.assertNotIn(
+                "shared_rhyme_key_groups", manifest["results"][0]
+            )
 
 
 if __name__ == "__main__":
