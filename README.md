@@ -116,7 +116,7 @@ python3 scripts/clean_rhyme_wordlist.py \
   --lang-code en
 ```
 
-Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v5`, does the
+Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v7`, does the
 following:
 
 - English and German accept Latin letters, accents, and ligatures, except click
@@ -124,12 +124,13 @@ following:
   `ÂâÎîÛû`, and `QqWwXx`. ASCII digits are valid in every language.
 - Typographic apostrophes become `'`, Unicode dash connectors become `-`,
   subscript digits become ASCII digits, and soft hyphens are removed.
-- A normalized headword may contain alphanumeric segments, single internal
-  `-` connectors, internal or terminal `'`, structured periods, and single
-  ASCII spaces between segments. This admits phrases, abbreviations, and
-  elisions such as `Victory Day`, `t.b.a.`, `a. a. O.`, and `losin'` while
-  rejecting malformed punctuation, combining forms, Braille, dotted-circle
-  notation, enclosed letters, other symbols, and emoji.
+- A normalized headword may contain the language's accepted letters, ASCII
+  digits, every printable ASCII keyboard punctuation character, the Hawaiian
+  ʻokina (`U+02BB`), and single internal ASCII spaces. This admits forms such
+  as `'cause`, `Hawaiʻian`, `Dungeons & Dragons`, `AC/DC`, `*NSYNC`, and
+  `100%`. Leading, trailing, or repeated spaces, other spacing characters,
+  Braille, dotted-circle notation, enclosed letters, other non-ASCII symbols,
+  and emoji remain rejected.
 - Unambiguous `~` IPA alternatives are split; balanced non-nested optional
   groups expand to at most eight variants; IPA `'` becomes `ˈ` and `·` becomes
   `.`.
@@ -143,12 +144,17 @@ Each eligible wordlist has these atomic audit files under
 `out/<lang>/reports/`:
 
 ```text
-*_rejected.jsonl        pronunciation rejections
-*_rejected_words.jsonl  headword rejections and invalid code points
+*_rejected.json          IPA grouped by rejection reason, with audit entries
+*_rejected_words.json    headwords grouped by rejection reason
 *_changes.jsonl         IPA transformations
 *_word_changes.jsonl    headword transformations
 *_report.json           counts, reasons, and policy version
 ```
+
+Grouped rejection files are pretty-printed with one rejected IPA or word per
+line. IPA groups also retain detailed audit entries containing the original
+word, IPA, normalized values where applicable, and rejected characters or
+tokens.
 
 ### 4. Build versioned SQLite indexes
 
