@@ -15,10 +15,9 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
 
 
-POLICY_VERSION = "rhyme-cleanup-v3"
+POLICY_VERSION = "rhyme-cleanup-v5"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
-HEADWORD_CONNECTORS = frozenset("-'")
 TURKISH_PRODUCT_ALPHABET = frozenset(
         "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
         "abcçdefgğhıijklmnoöprsştuüvyz"
@@ -68,13 +67,14 @@ class ProgressBar:
 
 def output_paths(output_path: Path) -> dict[str, Path]:
     stem = output_path.with_suffix("")
+    reports_dir = output_path.parent / "reports"
     return {
         "wordlist": output_path,
-        "rejected": stem.with_name(f"{stem.name}_rejected.jsonl"),
-        "rejected_words": stem.with_name(f"{stem.name}_rejected_words.jsonl"),
-        "changes": stem.with_name(f"{stem.name}_changes.jsonl"),
-        "word_changes": stem.with_name(f"{stem.name}_word_changes.jsonl"),
-        "report": stem.with_name(f"{stem.name}_report.json"),
+        "rejected": reports_dir / f"{stem.name}_rejected.jsonl",
+        "rejected_words": reports_dir / f"{stem.name}_rejected_words.jsonl",
+        "changes": reports_dir / f"{stem.name}_changes.jsonl",
+        "word_changes": reports_dir / f"{stem.name}_word_changes.jsonl",
+        "report": reports_dir / f"{stem.name}_report.json",
     }
 
 
@@ -113,14 +113,41 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
     for index, character in enumerate(word):
         if is_product_alphanumeric(character, lang_code):
             continue
-        connector_is_internal = (
-            character in HEADWORD_CONNECTORS
-            and index > 0
-            and index + 1 < len(word)
-            and is_product_alphanumeric(word[index - 1], lang_code)
-            and is_product_alphanumeric(word[index + 1], lang_code)
+        previous = word[index - 1] if index > 0 else None
+        following = word[index + 1] if index + 1 < len(word) else None
+        punctuation_is_valid = (
+            character == "-"
+            and previous is not None
+            and following is not None
+            and is_product_alphanumeric(previous, lang_code)
+            and is_product_alphanumeric(following, lang_code)
+        ) or (
+            character == "'"
+            and previous is not None
+            and is_product_alphanumeric(previous, lang_code)
+            and (
+                following is None
+                or is_product_alphanumeric(following, lang_code)
+            )
+        ) or (
+            character == " "
+            and previous is not None
+            and following is not None
+            and (
+                is_product_alphanumeric(previous, lang_code) or previous == "."
+            )
+            and is_product_alphanumeric(following, lang_code)
+        ) or (
+            character == "."
+            and previous is not None
+            and is_product_alphanumeric(previous, lang_code)
+            and (
+                following is None
+                or following == " "
+                or is_product_alphanumeric(following, lang_code)
+            )
         )
-        if not connector_is_internal:
+        if not punctuation_is_valid:
             invalid[character] += 1
     if not invalid:
         return None
