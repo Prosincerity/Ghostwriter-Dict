@@ -70,7 +70,7 @@ separate to preserve provenance.
 
 ## Rhyme-product cleanup
 
-Never modify canonical lists in place. `rhyme-cleanup-v7` creates
+Never modify canonical lists in place. `rhyme-cleanup-v8` creates
 `wordlist_<lang>_rhyme_eligible.txt` or
 `wordlist_<lang>_espeak_rhyme_eligible.txt` and applies these rules:
 
@@ -79,13 +79,12 @@ Never modify canonical lists in place. `rhyme-cleanup-v7` creates
   `ÂâÎîÛû`, and `QqWwXx`. All languages allow ASCII digits.
 - Normalize `’`, `‘`, and `ʼ` to `'`; Unicode dash connectors to `-`;
   subscript digits to ASCII; and remove soft hyphens.
-- The normalized headword may contain the language's accepted letters, ASCII
-  digits, every printable ASCII keyboard punctuation character, the Hawaiian
-  ʻokina (`U+02BB`), and single internal ASCII spaces. Accept forms such as
-  `'cause`, `Hawaiʻian`, `Dungeons & Dragons`, `AC/DC`, `*NSYNC`, and `100%`.
-  Reject leading, trailing, or repeated spaces, other spacing characters,
-  Braille, dotted-circle notation, enclosed letters, other non-ASCII symbols,
-  and emoji.
+- The normalized headword must be one token containing only the language's
+  accepted letters, ASCII digits, printable ASCII keyboard punctuation, or
+  the Hawaiian ʻokina (`U+02BB`). Accept forms such as `'cause`, `Hawaiʻian`,
+  `AC/DC`, `*NSYNC`, and `100%`. Reject all spaces and other spacing
+  characters, Braille, dotted-circle notation, enclosed letters, other
+  non-ASCII symbols, and emoji.
 - Split unambiguous `~` IPA alternatives; expand balanced non-nested optional
   groups to at most eight variants; normalize IPA `'` to `ˈ` and `·` to `.`.
 - Reject IPA containing controls, incomplete ellipses, ambiguous commas,
