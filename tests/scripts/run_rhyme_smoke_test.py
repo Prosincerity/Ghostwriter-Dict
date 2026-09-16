@@ -22,7 +22,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 RHYME_DB_SCRIPT = PROJECT_DIR / "scripts" / "generate_rhyme_db.py"
 LANGUAGES = ("en", "de", "tr")
 SOURCES = ("wiktionary", "espeak")
-CLEANUP_POLICY_VERSION = "rhyme-cleanup-v8"
+CLEANUP_POLICY_VERSION = "rhyme-cleanup-v9"
 
 
 class ProgressBar:
@@ -185,7 +185,10 @@ def create_sample(
 
 
 def validate_database(database_path: Path, expected_words: int) -> dict[str, object]:
-    connection = sqlite3.connect(database_path)
+    if not database_path.is_file():
+        raise FileNotFoundError(f"missing database: {database_path}")
+    database_uri = f"{database_path.resolve().as_uri()}?mode=ro"
+    connection = sqlite3.connect(database_uri, uri=True)
     try:
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity != "ok":
@@ -213,9 +216,11 @@ def validate_database(database_path: Path, expected_words: int) -> dict[str, obj
             "idx_ipa_reversed",
             "idx_assonance_reversed",
         }
-        if not expected_indexes.issubset(indexes):
-            missing = expected_indexes - indexes
-            raise RuntimeError(f"missing dictionary indexes: {missing}")
+        user_indexes = {name for name in indexes if not name.startswith("sqlite_")}
+        if user_indexes != expected_indexes:
+            raise RuntimeError(
+                f"unexpected dictionary indexes: {sorted(user_indexes)}"
+            )
 
         rows = connection.execute("SELECT COUNT(*) FROM dictionary").fetchone()[0]
         words = connection.execute(

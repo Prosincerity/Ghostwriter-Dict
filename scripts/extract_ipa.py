@@ -14,6 +14,7 @@ Both uncompressed .jsonl and gzip-compressed .jsonl.gz inputs are supported.
 import argparse
 import gzip
 import json
+import os
 import sys
 import unicodedata
 from collections import OrderedDict
@@ -112,6 +113,45 @@ def input_position(source: IO[str], path: Path) -> int:
     if path.name.endswith(".gz"):
         return buffer.fileobj.tell()
     return buffer.tell()
+
+
+def write_language_wordlists(
+    language_outdir: Path,
+    lang_code: str,
+    words: OrderedDict[str, None],
+    word_ipas: OrderedDict[str, OrderedDict[str, None]],
+) -> tuple[Path, Path]:
+    """Atomically write one language's IPA and no-IPA wordlists."""
+    language_outdir.mkdir(parents=True, exist_ok=True)
+    ipa_path = language_outdir / f"wordlist_{lang_code}_ipa.txt"
+    noipa_path = language_outdir / f"wordlist_{lang_code}_noipa.txt"
+    ipa_part = ipa_path.with_name(f"{ipa_path.name}.part")
+    noipa_part = noipa_path.with_name(f"{noipa_path.name}.part")
+    part_paths = (ipa_part, noipa_part)
+    for part_path in part_paths:
+        part_path.unlink(missing_ok=True)
+
+    try:
+        with ipa_part.open("w", encoding="utf-8", newline="\n") as output:
+            for word, ipas in word_ipas.items():
+                ipa_json = json.dumps(
+                    list(ipas), ensure_ascii=False, separators=(",", ":")
+                )
+                output.write(f"{word}\t{ipa_json}\n")
+
+        with noipa_part.open("w", encoding="utf-8", newline="\n") as output:
+            for word in words:
+                if word not in word_ipas:
+                    output.write(f"{word}\n")
+
+        os.replace(ipa_part, ipa_path)
+        os.replace(noipa_part, noipa_path)
+    except BaseException:
+        for part_path in part_paths:
+            part_path.unlink(missing_ok=True)
+        raise
+
+    return ipa_path, noipa_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -232,21 +272,12 @@ def main() -> None:
 
     for lang_code in lang_codes:
         language_outdir = args.outdir / lang_code
-        language_outdir.mkdir(parents=True, exist_ok=True)
-        ipa_path = language_outdir / f"wordlist_{lang_code}_ipa.txt"
-        noipa_path = language_outdir / f"wordlist_{lang_code}_noipa.txt"
-
-        with ipa_path.open("w", encoding="utf-8", newline="\n") as output:
-            for word, ipas in word_ipas[lang_code].items():
-                ipa_json = json.dumps(
-                    list(ipas), ensure_ascii=False, separators=(",", ":")
-                )
-                output.write(f"{word}\t{ipa_json}\n")
-
-        with noipa_path.open("w", encoding="utf-8", newline="\n") as output:
-            for word in words_seen[lang_code]:
-                if word not in word_ipas[lang_code]:
-                    output.write(f"{word}\n")
+        ipa_path, noipa_path = write_language_wordlists(
+            language_outdir,
+            lang_code,
+            words_seen[lang_code],
+            word_ipas[lang_code],
+        )
 
         with_ipa = len(word_ipas[lang_code])
         without_ipa = len(words_seen[lang_code]) - with_ipa

@@ -116,7 +116,7 @@ python3 scripts/clean_rhyme_wordlist.py \
   --lang-code en
 ```
 
-Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v8`, does the
+Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v9`, does the
 following:
 
 - English and German accept Latin letters, accents, and ligatures, except click

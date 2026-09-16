@@ -70,7 +70,7 @@ separate to preserve provenance.
 
 ## Rhyme-product cleanup
 
-Never modify canonical lists in place. `rhyme-cleanup-v8` creates
+Never modify canonical lists in place. `rhyme-cleanup-v9` creates
 `wordlist_<lang>_rhyme_eligible.txt` or
 `wordlist_<lang>_espeak_rhyme_eligible.txt` and applies these rules:
 
