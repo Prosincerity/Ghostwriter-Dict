@@ -116,7 +116,7 @@ python3 scripts/clean_rhyme_wordlist.py \
   --lang-code en
 ```
 
-Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v9`, does the
+Repeat for `de` and `tr`. The current policy, `rhyme-cleanup-v10`, does the
 following:
 
 - English and German accept Latin letters, accents, and ligatures, except click
@@ -135,7 +135,8 @@ following:
   `.`.
 - IPA with controls, incomplete ellipses, ambiguous commas, bad delimiters,
   mixed uppercase/SAMPA or orthographic notation, Greek `α`/`ε`, Turkish
-  dotless `ı`, or unknown tokens is rejected.
+  dotless `ı`, unknown tokens, or no phoneme beyond stress/prosody markers is
+  rejected.
 
 Pronunciations are validated independently, so valid variants survive a bad
 sibling. Normalized headword collisions are merged and their IPA deduplicated.

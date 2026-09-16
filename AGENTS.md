@@ -70,7 +70,7 @@ separate to preserve provenance.
 
 ## Rhyme-product cleanup
 
-Never modify canonical lists in place. `rhyme-cleanup-v9` creates
+Never modify canonical lists in place. `rhyme-cleanup-v10` creates
 `wordlist_<lang>_rhyme_eligible.txt` or
 `wordlist_<lang>_espeak_rhyme_eligible.txt` and applies these rules:
 
@@ -89,7 +89,8 @@ Never modify canonical lists in place. `rhyme-cleanup-v9` creates
   groups to at most eight variants; normalize IPA `'` to `ˈ` and `·` to `.`.
 - Reject IPA containing controls, incomplete ellipses, ambiguous commas,
   malformed delimiters, mixed uppercase/SAMPA or orthographic notation, Greek
-  `α`/`ε`, Turkish dotless `ı`, or remaining unknown tokens.
+  `α`/`ε`, Turkish dotless `ı`, remaining unknown tokens, or no phoneme beyond
+  stress/prosody markers.
 - Validate each pronunciation independently. Keep valid siblings and omit a
   word only if none survive. Merge and deduplicate IPA when normalized
   headwords collide.

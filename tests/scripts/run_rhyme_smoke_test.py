@@ -22,7 +22,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 RHYME_DB_SCRIPT = PROJECT_DIR / "scripts" / "generate_rhyme_db.py"
 LANGUAGES = ("en", "de", "tr")
 SOURCES = ("wiktionary", "espeak")
-CLEANUP_POLICY_VERSION = "rhyme-cleanup-v9"
+CLEANUP_POLICY_VERSION = "rhyme-cleanup-v10"
 
 
 class ProgressBar:

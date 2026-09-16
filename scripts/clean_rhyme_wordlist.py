@@ -13,10 +13,16 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, TextIO
 
-from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
+from generate_rhyme_db import (
+    LANGUAGES,
+    PROSODY_MARKERS,
+    STRESS_MARKERS,
+    parse_wordlist_line,
+    tokenize_ipa,
+)
 
 
-POLICY_VERSION = "rhyme-cleanup-v9"
+POLICY_VERSION = "rhyme-cleanup-v10"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
 ASCII_HEADWORD_SYMBOLS = frozenset(string.punctuation)
@@ -291,7 +297,9 @@ def clean_pronunciation(
             if unknown:
                 reason = "unrecognized_tokens"
                 details["tokens"] = dict(sorted(unknown.items()))
-            elif not tokens:
+            elif not any(
+                token not in STRESS_MARKERS | PROSODY_MARKERS for token in tokens
+            ):
                 reason = "empty_pronunciation"
         if reason:
             rejects.append({"reason": reason, "details": details})
@@ -361,33 +369,37 @@ def write_rejection_groups(
 
 def create_staging_database(path: Path) -> sqlite3.Connection:
     staging = sqlite3.connect(path)
-    staging.execute("PRAGMA journal_mode = OFF")
-    staging.execute("PRAGMA synchronous = OFF")
-    staging.executescript(
-        """
-        CREATE TABLE words (
-            word TEXT PRIMARY KEY,
-            position INTEGER NOT NULL
-        ) WITHOUT ROWID;
-        CREATE TABLE pronunciations (
-            word TEXT NOT NULL,
-            ipa TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            PRIMARY KEY (word, ipa)
-        ) WITHOUT ROWID;
-        CREATE TABLE rejected_words (
-            reason TEXT NOT NULL,
-            word TEXT NOT NULL,
-            position INTEGER NOT NULL
-        );
-        CREATE TABLE rejected_ipas (
-            reason TEXT NOT NULL,
-            ipa TEXT NOT NULL,
-            entry TEXT NOT NULL,
-            position INTEGER NOT NULL
-        );
-        """
-    )
+    try:
+        staging.execute("PRAGMA journal_mode = OFF")
+        staging.execute("PRAGMA synchronous = OFF")
+        staging.executescript(
+            """
+            CREATE TABLE words (
+                word TEXT PRIMARY KEY,
+                position INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            CREATE TABLE pronunciations (
+                word TEXT NOT NULL,
+                ipa TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (word, ipa)
+            ) WITHOUT ROWID;
+            CREATE TABLE rejected_words (
+                reason TEXT NOT NULL,
+                word TEXT NOT NULL,
+                position INTEGER NOT NULL
+            );
+            CREATE TABLE rejected_ipas (
+                reason TEXT NOT NULL,
+                ipa TEXT NOT NULL,
+                entry TEXT NOT NULL,
+                position INTEGER NOT NULL
+            );
+            """
+        )
+    except BaseException:
+        staging.close()
+        raise
     return staging
 
 
