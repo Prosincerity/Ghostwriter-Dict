@@ -353,7 +353,7 @@ class RhymeDatabaseHelperTest(unittest.TestCase):
 
     def test_release_version_validation_checks_syntax_and_filename(self):
         RHYME.validate_release_version(
-            "kaikki-en20260902", Path("en_kaikki-en20260902.db")
+            "kaikki-v20260902", Path("en_kaikki-v20260902.db")
         )
         with self.assertRaisesRegex(ValueError, "only letters"):
             RHYME.validate_release_version("bad release", Path("bad release.db"))
