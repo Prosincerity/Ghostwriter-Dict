@@ -110,6 +110,38 @@ class ExtractionHelperTest(unittest.TestCase):
 
 
 class CleanupHelperTest(unittest.TestCase):
+    def test_output_paths_and_legacy_paths_stay_under_reports(self):
+        output = Path("build/en/wordlist_en_rhyme_eligible.txt")
+        paths = CLEANER.output_paths(output)
+
+        self.assertEqual(paths["wordlist"], output)
+        for name in ("rejected", "rejected_words", "changes", "word_changes", "report"):
+            self.assertEqual(paths[name].parent, output.parent / "reports")
+        self.assertEqual(
+            CLEANER.legacy_rejection_paths(output),
+            (
+                output.parent / "reports/wordlist_en_rhyme_eligible_rejected.jsonl",
+                output.parent
+                / "reports/wordlist_en_rhyme_eligible_rejected_words.jsonl",
+            ),
+        )
+
+    def test_headword_normalization_reports_each_transformation_once(self):
+        normalized, transformations = CLEANER.normalize_headword(
+            "soft\N{SOFT HYPHEN}—quote’s₃"
+        )
+
+        self.assertEqual(normalized, "soft-quote's3")
+        self.assertEqual(
+            transformations,
+            [
+                "remove_soft_hyphen",
+                "normalize_apostrophe",
+                "normalize_dash",
+                "normalize_subscript_digit",
+            ],
+        )
+
     def test_notation_helpers_cover_wrappers_splits_and_delimiters(self):
         self.assertEqual(CLEANER.wrapper("/a/"), ("/", "/", "a"))
         self.assertIsNone(CLEANER.wrapper("/a]"))
@@ -217,6 +249,27 @@ class EspeakHelperTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "failed"):
                     ESPEAK.generate_language("fake", source, output, "en", 1, 1)
             self.assertEqual(output.read_text(encoding="utf-8"), "previous\n")
+            self.assertFalse(Path(f"{output}.part").exists())
+
+    def test_process_language_validates_and_writes_the_expected_output(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            outdir = Path(temp_dir)
+            language_dir = outdir / "en"
+            language_dir.mkdir()
+            source = language_dir / "wordlist_en_noipa.txt"
+            source.write_text("one\ntwo\n", encoding="utf-8")
+
+            with mock.patch.object(
+                ESPEAK, "call_espeak", return_value=["wʌn", "tuː"]
+            ) as call:
+                ESPEAK.process_language("fake-espeak", outdir, "en", 10)
+
+            call.assert_called_once_with("fake-espeak", "en", ["one", "two"])
+            output = language_dir / "wordlist_en_espeak_ipa.txt"
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                'one\t["wʌn"]\ntwo\t["tuː"]\n',
+            )
             self.assertFalse(Path(f"{output}.part").exists())
 
 
@@ -333,6 +386,26 @@ class SmokeHelperTest(unittest.TestCase):
                 {"language": "en", "rows": 2},
             )
             self.assertFalse(Path(f"{path}.part").exists())
+
+    def test_validate_database_accepts_the_production_schema(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "sample.db"
+            connection = sqlite3.connect(database)
+            try:
+                connection.executescript(RHYME.SCHEMA)
+                connection.execute(
+                    "INSERT INTO dictionary VALUES (?, ?, ?, ?)",
+                    ("cat", "/kæt/", "t æ k", "æ"),
+                )
+                connection.executescript(RHYME.INDEXES)
+                connection.commit()
+            finally:
+                connection.close()
+
+            self.assertEqual(
+                SMOKE.validate_database(database, 1),
+                {"integrity": "ok", "rows": 1, "unique_words": 1},
+            )
 
 
 if __name__ == "__main__":
