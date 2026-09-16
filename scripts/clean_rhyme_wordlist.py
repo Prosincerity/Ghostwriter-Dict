@@ -22,17 +22,32 @@ WRAPPERS = {"/": "/", "[": "]"}
 ASCII_HEADWORD_SYMBOLS = frozenset(string.punctuation)
 EXTRA_HEADWORD_LETTERS = frozenset("ʻ")
 TURKISH_PRODUCT_ALPHABET = frozenset(
-        "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
-        "abcçdefgğhıijklmnoöprsştuüvyz"
-        "ÂâÎîÛûQqWwXx"
+    "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
+    "abcçdefgğhıijklmnoöprsştuüvyz"
+    "ÂâÎîÛûQqWwXx"
 )
 BLOCKED_LATIN_LETTERS = frozenset("ǀǁǂǃꝚꝛ")
 HEADWORD_TRANSLATION = str.maketrans(
     {
-        "’": "'", "‘": "'", "ʼ": "'",
-        "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "−": "-",
-        "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
-        "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+        "’": "'",
+        "‘": "'",
+        "ʼ": "'",
+        "‐": "-",
+        "‑": "-",
+        "‒": "-",
+        "–": "-",
+        "—": "-",
+        "−": "-",
+        "₀": "0",
+        "₁": "1",
+        "₂": "2",
+        "₃": "3",
+        "₄": "4",
+        "₅": "5",
+        "₆": "6",
+        "₇": "7",
+        "₈": "8",
+        "₉": "9",
     }
 )
 
@@ -344,6 +359,65 @@ def write_rejection_groups(
     stream.write("\n  ]\n}\n")
 
 
+def create_staging_database(path: Path) -> sqlite3.Connection:
+    staging = sqlite3.connect(path)
+    staging.execute("PRAGMA journal_mode = OFF")
+    staging.execute("PRAGMA synchronous = OFF")
+    staging.executescript(
+        """
+        CREATE TABLE words (
+            word TEXT PRIMARY KEY,
+            position INTEGER NOT NULL
+        ) WITHOUT ROWID;
+        CREATE TABLE pronunciations (
+            word TEXT NOT NULL,
+            ipa TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            PRIMARY KEY (word, ipa)
+        ) WITHOUT ROWID;
+        CREATE TABLE rejected_words (
+            reason TEXT NOT NULL,
+            word TEXT NOT NULL,
+            position INTEGER NOT NULL
+        );
+        CREATE TABLE rejected_ipas (
+            reason TEXT NOT NULL,
+            ipa TEXT NOT NULL,
+            entry TEXT NOT NULL,
+            position INTEGER NOT NULL
+        );
+        """
+    )
+    return staging
+
+
+def write_eligible_wordlist(
+    output_path: Path, staging: sqlite3.Connection
+) -> None:
+    with output_path.open("w", encoding="utf-8", newline="\n") as output:
+        current_word: Optional[str] = None
+        current_ipas: list[str] = []
+        rows = staging.execute(
+            "SELECT words.word, pronunciations.ipa "
+            "FROM words JOIN pronunciations USING (word) "
+            "ORDER BY words.position, pronunciations.position"
+        )
+        for staged_word, ipa in rows:
+            if current_word is not None and staged_word != current_word:
+                encoded = json.dumps(
+                    current_ipas, ensure_ascii=False, separators=(",", ":")
+                )
+                output.write(f"{current_word}\t{encoded}\n")
+                current_ipas = []
+            current_word = staged_word
+            current_ipas.append(ipa)
+        if current_word is not None:
+            encoded = json.dumps(
+                current_ipas, ensure_ascii=False, separators=(",", ":")
+            )
+            output.write(f"{current_word}\t{encoded}\n")
+
+
 def clean_wordlist(
     input_path: Path, output_path: Path, lang_code: str
 ) -> dict[str, object]:
@@ -370,34 +444,7 @@ def clean_wordlist(
     staging: Optional[sqlite3.Connection] = None
 
     try:
-        staging = sqlite3.connect(staging_path)
-        staging.execute("PRAGMA journal_mode = OFF")
-        staging.execute("PRAGMA synchronous = OFF")
-        staging.executescript(
-            """
-            CREATE TABLE words (
-                word TEXT PRIMARY KEY,
-                position INTEGER NOT NULL
-            ) WITHOUT ROWID;
-            CREATE TABLE pronunciations (
-                word TEXT NOT NULL,
-                ipa TEXT NOT NULL,
-                position INTEGER NOT NULL,
-                PRIMARY KEY (word, ipa)
-            ) WITHOUT ROWID;
-            CREATE TABLE rejected_words (
-                reason TEXT NOT NULL,
-                word TEXT NOT NULL,
-                position INTEGER NOT NULL
-            );
-            CREATE TABLE rejected_ipas (
-                reason TEXT NOT NULL,
-                ipa TEXT NOT NULL,
-                entry TEXT NOT NULL,
-                position INTEGER NOT NULL
-            );
-            """
-        )
+        staging = create_staging_database(staging_path)
         pronunciation_position = 0
         rejection_position = 0
         with (
@@ -543,30 +590,7 @@ def clean_wordlist(
         counts["eligible_pronunciations"] = staging.execute(
             "SELECT COUNT(*) FROM pronunciations"
         ).fetchone()[0]
-        with part_paths["wordlist"].open(
-            "w", encoding="utf-8", newline="\n"
-        ) as output:
-            current_word = None
-            current_ipas: list[str] = []
-            rows = staging.execute(
-                "SELECT words.word, pronunciations.ipa "
-                "FROM words JOIN pronunciations USING (word) "
-                "ORDER BY words.position, pronunciations.position"
-            )
-            for staged_word, ipa in rows:
-                if current_word is not None and staged_word != current_word:
-                    encoded = json.dumps(
-                        current_ipas, ensure_ascii=False, separators=(",", ":")
-                    )
-                    output.write(f"{current_word}\t{encoded}\n")
-                    current_ipas = []
-                current_word = staged_word
-                current_ipas.append(ipa)
-            if current_word is not None:
-                encoded = json.dumps(
-                    current_ipas, ensure_ascii=False, separators=(",", ":")
-                )
-                output.write(f"{current_word}\t{encoded}\n")
+        write_eligible_wordlist(part_paths["wordlist"], staging)
         with part_paths["rejected"].open(
             "w", encoding="utf-8", newline="\n"
         ) as rejected:
