@@ -87,7 +87,7 @@ class HeadwordCleanupTest(unittest.TestCase):
                     )
                     self.assertTrue(rejection["details"]["invalid_characters"])
 
-    def test_structured_spaces_and_periods_are_allowed(self):
+    def test_keyboard_symbols_elisions_and_okina_are_allowed(self):
         for word in (
             "Victory Day",
             "t.b.a",
@@ -95,22 +95,27 @@ class HeadwordCleanupTest(unittest.TestCase):
             "Dr.",
             "a. a. O.",
             "high-definition television",
+            "'cause",
+            "'Murica",
+            "Hawaiʻian",
+            "Dungeons & Dragons",
+            "AC/DC",
+            "*NSYNC",
+            "100%",
+            "C++",
+            "email@example.com",
         ):
             with self.subTest(word=word):
                 self.assertIsNone(CLEANER.headword_rejection(word, "en"))
 
-    def test_malformed_punctuation_positions_are_rejected(self):
+    def test_malformed_or_non_ascii_spacing_and_symbols_are_rejected(self):
         for word in (
             " leading",
             "trailing ",
             "two  words",
-            ".word",
-            "word..word",
-            "word .",
-            "-casting",
-            "anti-",
-            "state--art",
-            "'word",
+            "two\twords",
+            "non\N{NO-BREAK SPACE}breaking",
+            "snow☃man",
         ):
             with self.subTest(word=word):
                 self.assertIsNotNone(CLEANER.headword_rejection(word, "en"))
@@ -153,6 +158,10 @@ class WordlistCleanupTest(unittest.TestCase):
                 ("Victory Day", ["/ˈvɪktəri ˈdeɪ/"]),
                 ("t.b.a.", ["/ˌtiːbiːˈeɪ/"]),
                 ("losin’", ["/ˈluːzɪn/"]),
+                ("'cause", ["/kəz/"]),
+                ("'Murica", ["/ˈmɛɹɪkə/"]),
+                ("Hawaiʻian", ["/həˈwaɪən/"]),
+                ("Dungeons & Dragons", ["/ˈdʌndʒənz ænd ˈdɹæɡənz/"]),
                 ("variants", ["/'vɛəriənts/", "/bad…/", "/vɛər(i)ənts/"]),
                 ("tones", ["/toʊn˦˨/"]),
             ]
@@ -164,13 +173,18 @@ class WordlistCleanupTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
+            legacy_rejections = CLEANER.legacy_rejection_paths(output)
+            legacy_rejections[0].parent.mkdir(parents=True, exist_ok=True)
+            for legacy_path in legacy_rejections:
+                legacy_path.write_text("old JSONL\n", encoding="utf-8")
+
             report = CLEANER.clean_wordlist(source, output, "en")
             parsed = {}
             for line in output.read_text(encoding="utf-8").splitlines():
                 word, encoded = line.split("\t", 1)
                 parsed[word] = json.loads(encoded)
-            self.assertNotIn("-casting", parsed)
-            self.assertNotIn("anti-", parsed)
+            self.assertIn("-casting", parsed)
+            self.assertIn("anti-", parsed)
             self.assertNotIn("♥-lichen", parsed)
             self.assertIn("mother-in-law", parsed)
             self.assertIn("state-of-the-art", parsed)
@@ -182,13 +196,17 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn("Victory Day", parsed)
             self.assertIn("t.b.a.", parsed)
             self.assertIn("losin'", parsed)
+            self.assertIn("'cause", parsed)
+            self.assertIn("'Murica", parsed)
+            self.assertIn("Hawaiʻian", parsed)
+            self.assertIn("Dungeons & Dragons", parsed)
             self.assertEqual(
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v5")
-            self.assertEqual(report["counts"]["eligible_words"], 12)
-            self.assertEqual(report["counts"]["rejected_words"], 3)
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v7")
+            self.assertEqual(report["counts"]["eligible_words"], 18)
+            self.assertEqual(report["counts"]["rejected_words"], 1)
 
             paths = CLEANER.output_paths(output)
             self.assertEqual(paths["wordlist"], output)
@@ -199,31 +217,44 @@ class WordlistCleanupTest(unittest.TestCase):
                     if name != "wordlist"
                 )
             )
-            rejects = [
-                json.loads(line)
-                for line in paths["rejected"].read_text(encoding="utf-8").splitlines()
-            ]
+            rejected_ipa_text = paths["rejected"].read_text(encoding="utf-8")
+            rejects = json.loads(rejected_ipa_text)
+            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v7")
+            ipa_groups = {
+                group["reason"]: group for group in rejects["groups"]
+            }
             self.assertEqual(
-                {row["reason"] for row in rejects},
+                set(ipa_groups),
                 {
-                    "combining_form",
                     "disallowed_headword_characters",
                     "incomplete_pronunciation",
                 },
             )
-            rejected_words = [
-                json.loads(line)
-                for line in paths["rejected_words"]
-                .read_text(encoding="utf-8")
-                .splitlines()
-            ]
             self.assertEqual(
-                {row["word"] for row in rejected_words},
-                {"-casting", "anti-", "♥-lichen"},
+                ipa_groups["incomplete_pronunciation"]["ipas"],
+                ["/bad…/"],
             )
             self.assertTrue(
-                all(row["details"]["invalid_characters"] for row in rejected_words)
+                all(
+                    len(group["ipas"]) == len(group["entries"])
+                    for group in rejects["groups"]
+                )
             )
+            self.assertIn('\n        "/bad…/"', rejected_ipa_text)
+            rejected_word_text = paths["rejected_words"].read_text(encoding="utf-8")
+            rejected_words = json.loads(rejected_word_text)
+            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v7")
+            self.assertEqual(
+                rejected_words["groups"],
+                [
+                    {
+                        "reason": "disallowed_headword_characters",
+                        "words": ["♥-lichen"],
+                    },
+                ],
+            )
+            self.assertIn('\n        "♥-lichen"', rejected_word_text)
+            self.assertTrue(all(not path.exists() for path in legacy_rejections))
             word_changes = [
                 json.loads(line)
                 for line in paths["word_changes"]
@@ -253,15 +284,23 @@ class WordlistCleanupTest(unittest.TestCase):
             output = root / "eligible.txt"
             source.write_text('ok\t["/oʊˈkeɪ/"]\nbroken\tnot-json\n', encoding="utf-8")
             paths = CLEANER.output_paths(output)
+            legacy_rejections = CLEANER.legacy_rejection_paths(output)
             for path in paths.values():
                 path.parent.mkdir(parents=True, exist_ok=True)
             for path in paths.values():
                 path.write_text("previous\n", encoding="utf-8")
+            for legacy_path in legacy_rejections:
+                legacy_path.write_text("previous JSONL\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 CLEANER.clean_wordlist(source, output, "en")
             for path in paths.values():
                 self.assertEqual(path.read_text(encoding="utf-8"), "previous\n")
                 self.assertFalse(Path(f"{path}.part").exists())
+            for legacy_path in legacy_rejections:
+                self.assertEqual(
+                    legacy_path.read_text(encoding="utf-8"),
+                    "previous JSONL\n",
+                )
 
 
 if __name__ == "__main__":

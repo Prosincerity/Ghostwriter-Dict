@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import string
 import sys
 import unicodedata
 from collections import Counter
@@ -15,9 +16,11 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
 
 
-POLICY_VERSION = "rhyme-cleanup-v5"
+POLICY_VERSION = "rhyme-cleanup-v7"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
+ASCII_HEADWORD_SYMBOLS = frozenset(string.punctuation)
+EXTRA_HEADWORD_LETTERS = frozenset("ʻ")
 TURKISH_PRODUCT_ALPHABET = frozenset(
         "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
         "abcçdefgğhıijklmnoöprsştuüvyz"
@@ -70,12 +73,21 @@ def output_paths(output_path: Path) -> dict[str, Path]:
     reports_dir = output_path.parent / "reports"
     return {
         "wordlist": output_path,
-        "rejected": reports_dir / f"{stem.name}_rejected.jsonl",
-        "rejected_words": reports_dir / f"{stem.name}_rejected_words.jsonl",
+        "rejected": reports_dir / f"{stem.name}_rejected.json",
+        "rejected_words": reports_dir / f"{stem.name}_rejected_words.json",
         "changes": reports_dir / f"{stem.name}_changes.jsonl",
         "word_changes": reports_dir / f"{stem.name}_word_changes.jsonl",
         "report": reports_dir / f"{stem.name}_report.json",
     }
+
+
+def legacy_rejection_paths(output_path: Path) -> tuple[Path, Path]:
+    stem = output_path.with_suffix("")
+    reports_dir = output_path.parent / "reports"
+    return (
+        reports_dir / f"{stem.name}_rejected.jsonl",
+        reports_dir / f"{stem.name}_rejected_words.jsonl",
+    )
 
 
 def normalize_headword(word: str) -> tuple[str, list[str]]:
@@ -111,43 +123,22 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
     """Describe a normalized product-ineligible headword, or return ``None``."""
     invalid = Counter()
     for index, character in enumerate(word):
-        if is_product_alphanumeric(character, lang_code):
+        if (
+            is_product_alphanumeric(character, lang_code)
+            or character in ASCII_HEADWORD_SYMBOLS
+            or character in EXTRA_HEADWORD_LETTERS
+        ):
             continue
         previous = word[index - 1] if index > 0 else None
         following = word[index + 1] if index + 1 < len(word) else None
-        punctuation_is_valid = (
-            character == "-"
-            and previous is not None
-            and following is not None
-            and is_product_alphanumeric(previous, lang_code)
-            and is_product_alphanumeric(following, lang_code)
-        ) or (
-            character == "'"
-            and previous is not None
-            and is_product_alphanumeric(previous, lang_code)
-            and (
-                following is None
-                or is_product_alphanumeric(following, lang_code)
-            )
-        ) or (
+        space_is_valid = (
             character == " "
             and previous is not None
             and following is not None
-            and (
-                is_product_alphanumeric(previous, lang_code) or previous == "."
-            )
-            and is_product_alphanumeric(following, lang_code)
-        ) or (
-            character == "."
-            and previous is not None
-            and is_product_alphanumeric(previous, lang_code)
-            and (
-                following is None
-                or following == " "
-                or is_product_alphanumeric(following, lang_code)
-            )
+            and previous != " "
+            and following != " "
         )
-        if not punctuation_is_valid:
+        if not space_is_valid:
             invalid[character] += 1
     if not invalid:
         return None
@@ -159,12 +150,10 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
         }
         for character, count in sorted(invalid.items())
     ]
-    reason = (
-        "combining_form"
-        if word.startswith("-") or word.endswith("-")
-        else "disallowed_headword_characters"
-    )
-    return {"reason": reason, "details": {"invalid_characters": characters}}
+    return {
+        "reason": "disallowed_headword_characters",
+        "details": {"invalid_characters": characters},
+    }
 
 
 def wrapper(value: str) -> Optional[tuple[str, str, str]]:
@@ -311,6 +300,55 @@ def write_json_line(stream: TextIO, value: dict[str, object]) -> None:
     stream.write("\n")
 
 
+def write_rejection_groups(
+    stream: TextIO,
+    staging: sqlite3.Connection,
+    table: str,
+    value_column: str,
+    list_name: str,
+    include_entries: bool = False,
+) -> None:
+    """Write reason-grouped rejection values and optional audit entries."""
+    stream.write("{\n")
+    stream.write(
+        f'  "policy_version": '
+        f'{json.dumps(POLICY_VERSION, ensure_ascii=False)},\n'
+    )
+    stream.write('  "groups": [')
+    reasons = staging.execute(
+        f"SELECT reason FROM {table} GROUP BY reason ORDER BY reason"
+    )
+    for group_index, (reason,) in enumerate(reasons):
+        stream.write("," if group_index else "")
+        stream.write("\n    {\n")
+        stream.write(
+            f'      "reason": {json.dumps(reason, ensure_ascii=False)},\n'
+        )
+        stream.write(f'      "{list_name}": [')
+        values = staging.execute(
+            f"SELECT {value_column} FROM {table} "
+            "WHERE reason = ? ORDER BY position",
+            (reason,),
+        )
+        for value_index, (value,) in enumerate(values):
+            stream.write("," if value_index else "")
+            stream.write(f"\n        {json.dumps(value, ensure_ascii=False)}")
+        stream.write("\n      ]")
+        if include_entries:
+            stream.write(',\n      "entries": [')
+            entries = staging.execute(
+                f"SELECT entry FROM {table} "
+                "WHERE reason = ? ORDER BY position",
+                (reason,),
+            )
+            for entry_index, (entry,) in enumerate(entries):
+                stream.write("," if entry_index else "")
+                stream.write(f"\n        {entry}")
+            stream.write("\n      ]")
+        stream.write("\n    }")
+    stream.write("\n  ]\n}\n")
+
+
 def clean_wordlist(
     input_path: Path, output_path: Path, lang_code: str
 ) -> dict[str, object]:
@@ -352,15 +390,23 @@ def clean_wordlist(
                 position INTEGER NOT NULL,
                 PRIMARY KEY (word, ipa)
             ) WITHOUT ROWID;
+            CREATE TABLE rejected_words (
+                reason TEXT NOT NULL,
+                word TEXT NOT NULL,
+                position INTEGER NOT NULL
+            );
+            CREATE TABLE rejected_ipas (
+                reason TEXT NOT NULL,
+                ipa TEXT NOT NULL,
+                entry TEXT NOT NULL,
+                position INTEGER NOT NULL
+            );
             """
         )
         pronunciation_position = 0
+        rejection_position = 0
         with (
             input_path.open("r", encoding="utf-8") as source,
-            part_paths["rejected"].open("w", encoding="utf-8", newline="\n") as rejected,
-            part_paths["rejected_words"].open(
-                "w", encoding="utf-8", newline="\n"
-            ) as rejected_words,
             part_paths["changes"].open("w", encoding="utf-8", newline="\n") as changes,
             part_paths["word_changes"].open(
                 "w", encoding="utf-8", newline="\n"
@@ -390,28 +436,35 @@ def clean_wordlist(
 
                 word_rejection = headword_rejection(normalized_word, lang_code)
                 if word_rejection:
-                    word_row = {
-                        "ipas": ipas,
-                        "normalized_word": normalized_word,
-                        "policy_version": POLICY_VERSION,
-                        "reason": word_rejection["reason"],
-                        "details": word_rejection["details"],
-                        "word": word,
-                    }
-                    write_json_line(rejected_words, word_row)
+                    staging.execute(
+                        "INSERT INTO rejected_words VALUES (?, ?, ?)",
+                        (word_rejection["reason"], word, line_number),
+                    )
                     counts["rejected_words"] += 1
                     word_rejection_reasons[str(word_rejection["reason"])] += 1
                     for ipa in ipas:
-                        write_json_line(
-                            rejected,
-                            {
-                                "details": word_rejection["details"],
-                                "ipa": ipa,
-                                "normalized_word": normalized_word,
-                                "policy_version": POLICY_VERSION,
-                                "reason": word_rejection["reason"],
-                                "word": word,
-                            },
+                        rejection_position += 1
+                        entry = {
+                            "details": word_rejection["details"],
+                            "ipa": ipa,
+                            "normalized_word": normalized_word,
+                            "policy_version": POLICY_VERSION,
+                            "reason": word_rejection["reason"],
+                            "word": word,
+                        }
+                        staging.execute(
+                            "INSERT INTO rejected_ipas VALUES (?, ?, ?, ?)",
+                            (
+                                word_rejection["reason"],
+                                ipa,
+                                json.dumps(
+                                    entry,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                ),
+                                rejection_position,
+                            ),
                         )
                         rejection_reasons[str(word_rejection["reason"])] += 1
                         counts["rejected_candidates"] += 1
@@ -443,7 +496,21 @@ def clean_wordlist(
                             }
                             if "details" in reject:
                                 row["details"] = reject["details"]
-                            write_json_line(rejected, row)
+                            rejection_position += 1
+                            staging.execute(
+                                "INSERT INTO rejected_ipas VALUES (?, ?, ?, ?)",
+                                (
+                                    reject["reason"],
+                                    ipa,
+                                    json.dumps(
+                                        row,
+                                        ensure_ascii=False,
+                                        sort_keys=True,
+                                        separators=(",", ":"),
+                                    ),
+                                    rejection_position,
+                                ),
+                            )
                             rejection_reasons[str(reject["reason"])] += 1
                             counts["rejected_candidates"] += 1
 
@@ -505,6 +572,27 @@ def clean_wordlist(
                     current_ipas, ensure_ascii=False, separators=(",", ":")
                 )
                 output.write(f"{current_word}\t{encoded}\n")
+        with part_paths["rejected"].open(
+            "w", encoding="utf-8", newline="\n"
+        ) as rejected:
+            write_rejection_groups(
+                rejected,
+                staging,
+                "rejected_ipas",
+                "ipa",
+                "ipas",
+                include_entries=True,
+            )
+        with part_paths["rejected_words"].open(
+            "w", encoding="utf-8", newline="\n"
+        ) as rejected_words:
+            write_rejection_groups(
+                rejected_words,
+                staging,
+                "rejected_words",
+                "word",
+                "words",
+            )
         staging.close()
         staging = None
         staging_path.unlink()
@@ -534,6 +622,8 @@ def clean_wordlist(
             "word_changes", "report",
         ):
             os.replace(part_paths[name], paths[name])
+        for legacy_path in legacy_rejection_paths(output_path):
+            legacy_path.unlink(missing_ok=True)
         return report
     except BaseException:
         if staging is not None:
