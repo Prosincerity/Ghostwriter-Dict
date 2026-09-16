@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -138,6 +139,32 @@ class HeadwordCleanupTest(unittest.TestCase):
 
 
 class WordlistCleanupTest(unittest.TestCase):
+    def test_cli_writes_outputs_and_prints_policy_summary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.txt"
+            output = root / "eligible.txt"
+            source.write_text('word\t["/ˈwɝd/"]\n', encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "clean_rhyme_wordlist.py"),
+                    str(source),
+                    str(output),
+                    "--lang-code",
+                    "en",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                source.read_text(encoding="utf-8"),
+            )
+            self.assertIn("Cleanup policy       : rhyme-cleanup-v7", result.stdout)
+            self.assertTrue(CLEANER.output_paths(output)["report"].is_file())
+
     def test_writes_eligible_wordlist_and_audit_sidecars(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
