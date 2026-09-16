@@ -90,16 +90,12 @@ class HeadwordCleanupTest(unittest.TestCase):
 
     def test_keyboard_symbols_elisions_and_okina_are_allowed(self):
         for word in (
-            "Victory Day",
             "t.b.a",
             "t.b.a.",
             "Dr.",
-            "a. a. O.",
-            "high-definition television",
             "'cause",
             "'Murica",
             "Hawaiʻian",
-            "Dungeons & Dragons",
             "AC/DC",
             "*NSYNC",
             "100%",
@@ -111,6 +107,10 @@ class HeadwordCleanupTest(unittest.TestCase):
 
     def test_malformed_or_non_ascii_spacing_and_symbols_are_rejected(self):
         for word in (
+            "two words",
+            "Victory Day",
+            "Dungeons & Dragons",
+            "a. a. O.",
             " leading",
             "trailing ",
             "two  words",
@@ -162,7 +162,7 @@ class WordlistCleanupTest(unittest.TestCase):
                 output.read_text(encoding="utf-8"),
                 source.read_text(encoding="utf-8"),
             )
-            self.assertIn("Cleanup policy       : rhyme-cleanup-v7", result.stdout)
+            self.assertIn("Cleanup policy       : rhyme-cleanup-v8", result.stdout)
             self.assertTrue(CLEANER.output_paths(output)["report"].is_file())
 
     def test_writes_eligible_wordlist_and_audit_sidecars(self):
@@ -220,20 +220,20 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn("CO2", parsed)
             self.assertIn("software", parsed)
             self.assertIn("Word2026", parsed)
-            self.assertIn("Victory Day", parsed)
+            self.assertNotIn("Victory Day", parsed)
             self.assertIn("t.b.a.", parsed)
             self.assertIn("losin'", parsed)
             self.assertIn("'cause", parsed)
             self.assertIn("'Murica", parsed)
             self.assertIn("Hawaiʻian", parsed)
-            self.assertIn("Dungeons & Dragons", parsed)
+            self.assertNotIn("Dungeons & Dragons", parsed)
             self.assertEqual(
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v7")
-            self.assertEqual(report["counts"]["eligible_words"], 18)
-            self.assertEqual(report["counts"]["rejected_words"], 1)
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v8")
+            self.assertEqual(report["counts"]["eligible_words"], 16)
+            self.assertEqual(report["counts"]["rejected_words"], 3)
 
             paths = CLEANER.output_paths(output)
             self.assertEqual(paths["wordlist"], output)
@@ -246,7 +246,7 @@ class WordlistCleanupTest(unittest.TestCase):
             )
             rejected_ipa_text = paths["rejected"].read_text(encoding="utf-8")
             rejects = json.loads(rejected_ipa_text)
-            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v7")
+            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v8")
             ipa_groups = {
                 group["reason"]: group for group in rejects["groups"]
             }
@@ -270,13 +270,17 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn('\n        "/bad…/"', rejected_ipa_text)
             rejected_word_text = paths["rejected_words"].read_text(encoding="utf-8")
             rejected_words = json.loads(rejected_word_text)
-            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v7")
+            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v8")
             self.assertEqual(
                 rejected_words["groups"],
                 [
                     {
                         "reason": "disallowed_headword_characters",
-                        "words": ["♥-lichen"],
+                        "words": [
+                            "♥-lichen",
+                            "Victory Day",
+                            "Dungeons & Dragons",
+                        ],
                     },
                 ],
             )
