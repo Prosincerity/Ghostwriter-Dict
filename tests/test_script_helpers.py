@@ -219,6 +219,14 @@ class CleanupHelperTest(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_staging_database_closes_when_initialization_fails(self):
+        connection = mock.Mock()
+        connection.executescript.side_effect = sqlite3.OperationalError("full")
+        with mock.patch.object(CLEANER.sqlite3, "connect", return_value=connection):
+            with self.assertRaisesRegex(sqlite3.OperationalError, "full"):
+                CLEANER.create_staging_database(Path("staging.db"))
+        connection.close.assert_called_once_with()
+
 
 class EspeakHelperTest(unittest.TestCase):
     def test_validate_input_counts_words_and_rejects_invalid_rows(self):
@@ -265,6 +273,10 @@ class EspeakHelperTest(unittest.TestCase):
         word, encoded = output.getvalue().strip().split("\t")
         self.assertEqual(word, unicodedata.normalize("NFC", "Café"))
         self.assertEqual(json.loads(encoded), ["á"])
+
+    def test_write_batch_rejects_a_mismatched_result_count(self):
+        with self.assertRaisesRegex(ValueError, "1 results for 2 words"):
+            ESPEAK.write_batch(["one", "two"], ["wʌn"], io.StringIO())
 
     def test_generate_language_failure_preserves_output_and_removes_part(self):
         with tempfile.TemporaryDirectory() as temp_dir:

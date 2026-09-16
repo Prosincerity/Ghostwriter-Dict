@@ -198,6 +198,11 @@ def generate_language(
 def write_batch(
     words: list[str], pronunciations: list[str], output: TextIO
 ) -> tuple[int, int]:
+    if len(pronunciations) != len(words):
+        raise ValueError(
+            "eSpeak result count does not match input count: "
+            f"{len(pronunciations)} results for {len(words)} words"
+        )
     generated = 0
     empty = 0
     for word, raw_ipa in zip(words, pronunciations):

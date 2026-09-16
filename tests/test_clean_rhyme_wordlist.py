@@ -51,6 +51,13 @@ class PronunciationCleanupTest(unittest.TestCase):
                 self.assertEqual(valid, [])
                 self.assertEqual(rejects[0]["reason"], reason)
 
+    def test_rejects_pronunciations_with_only_prosody_markers(self):
+        for ipa in ("/ˈ/", "[ˌ˥]", "↗"):
+            with self.subTest(ipa=ipa):
+                valid, _, rejects = CLEANER.clean_pronunciation(ipa, "en")
+                self.assertEqual(valid, [])
+                self.assertEqual(rejects[0]["reason"], "empty_pronunciation")
+
     def test_optional_groups_are_nonnested_and_capped(self):
         self.assertEqual(
             self.clean("/a((b))c/")[2][0]["reason"], "invalid_optional_group"
@@ -175,7 +182,7 @@ class WordlistCleanupTest(unittest.TestCase):
                 output.read_text(encoding="utf-8"),
                 source.read_text(encoding="utf-8"),
             )
-            self.assertIn("Cleanup policy       : rhyme-cleanup-v9", result.stdout)
+            self.assertIn("Cleanup policy       : rhyme-cleanup-v10", result.stdout)
             self.assertTrue(CLEANER.output_paths(output)["report"].is_file())
 
     def test_writes_eligible_wordlist_and_audit_sidecars(self):
@@ -244,7 +251,7 @@ class WordlistCleanupTest(unittest.TestCase):
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v9")
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v10")
             self.assertEqual(report["counts"]["eligible_words"], 16)
             self.assertEqual(report["counts"]["rejected_words"], 3)
 
@@ -259,7 +266,7 @@ class WordlistCleanupTest(unittest.TestCase):
             )
             rejected_ipa_text = paths["rejected"].read_text(encoding="utf-8")
             rejects = json.loads(rejected_ipa_text)
-            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v9")
+            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v10")
             ipa_groups = {
                 group["reason"]: group for group in rejects["groups"]
             }
@@ -283,7 +290,7 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn('\n        "/bad…/"', rejected_ipa_text)
             rejected_word_text = paths["rejected_words"].read_text(encoding="utf-8")
             rejected_words = json.loads(rejected_word_text)
-            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v9")
+            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v10")
             self.assertEqual(
                 rejected_words["groups"],
                 [
