@@ -18,8 +18,9 @@ import os
 import sys
 import unicodedata
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import IO, Iterable, TextIO
+from typing import IO, Iterable, Mapping, TextIO
 
 
 # Square brackets and slashes are valid IPA delimiters. Only values whose
@@ -37,6 +38,17 @@ JUNK_IPA = {
     "[?]",
     "/?/",
 }
+
+
+@dataclass
+class LanguageExtraction:
+    words: OrderedDict[str, None] = field(default_factory=OrderedDict)
+    word_ipas: OrderedDict[str, OrderedDict[str, None]] = field(
+        default_factory=OrderedDict
+    )
+    matched: int = 0
+    script_rejected: int = 0
+    junk_ipa_dropped: int = 0
 
 
 class ProgressBar:
@@ -118,8 +130,8 @@ def input_position(source: IO[str], path: Path) -> int:
 def write_language_wordlists(
     language_outdir: Path,
     lang_code: str,
-    words: OrderedDict[str, None],
-    word_ipas: OrderedDict[str, OrderedDict[str, None]],
+    words: Mapping[str, object],
+    word_ipas: Mapping[str, Mapping[str, object]],
 ) -> tuple[Path, Path]:
     """Atomically write one language's IPA and no-IPA wordlists."""
     language_outdir.mkdir(parents=True, exist_ok=True)
@@ -187,11 +199,7 @@ def main() -> None:
     # A dict also removes repeated --lang-code arguments while retaining order.
     lang_codes = tuple(dict.fromkeys(args.lang_codes))
     selected_languages = set(lang_codes)
-    words_seen = {code: OrderedDict() for code in lang_codes}
-    word_ipas = {code: OrderedDict() for code in lang_codes}
-    matched = {code: 0 for code in lang_codes}
-    script_rejected = {code: 0 for code in lang_codes}
-    junk_ipa_dropped = {code: 0 for code in lang_codes}
+    languages = {code: LanguageExtraction() for code in lang_codes}
 
     total_lines = 0
     bad_lines = 0
@@ -212,7 +220,7 @@ def main() -> None:
                     progress.update(
                         completed_input_bytes + input_position(source, input_path),
                         total_lines,
-                        {code: len(words_seen[code]) for code in lang_codes},
+                        {code: len(languages[code].words) for code in lang_codes},
                     )
                 try:
                     obj = json.loads(line)
@@ -227,7 +235,8 @@ def main() -> None:
                 lang_code = obj.get("lang_code")
                 if lang_code not in selected_languages:
                     continue
-                matched[lang_code] += 1
+                language = languages[lang_code]
+                language.matched += 1
 
                 word = obj.get("word")
                 if (
@@ -239,10 +248,10 @@ def main() -> None:
                     continue
                 word = unicodedata.normalize("NFC", word)
                 if args.latin_headwords_only and contains_non_latin_letter(word):
-                    script_rejected[lang_code] += 1
+                    language.script_rejected += 1
                     continue
 
-                words_seen[lang_code].setdefault(word, None)
+                language.words.setdefault(word, None)
 
                 ipa_fields = list(iter_ipa_fields(obj.get("sounds")))
                 usable_ipas = [
@@ -250,10 +259,10 @@ def main() -> None:
                     for ipa in ipa_fields
                     if is_usable_ipa(ipa) and isinstance(ipa, str)
                 ]
-                junk_ipa_dropped[lang_code] += len(ipa_fields) - len(usable_ipas)
+                language.junk_ipa_dropped += len(ipa_fields) - len(usable_ipas)
 
                 if usable_ipas:
-                    bucket = word_ipas[lang_code].setdefault(word, OrderedDict())
+                    bucket = language.word_ipas.setdefault(word, OrderedDict())
                     for ipa in usable_ipas:
                         bucket.setdefault(ipa, None)
 
@@ -261,7 +270,7 @@ def main() -> None:
         progress.update(
             completed_input_bytes,
             total_lines,
-            {code: len(words_seen[code]) for code in lang_codes},
+            {code: len(languages[code].words) for code in lang_codes},
         )
 
     progress.finish()
@@ -271,20 +280,21 @@ def main() -> None:
     print(f"Other invalid records : {invalid_entries}")
 
     for lang_code in lang_codes:
+        language = languages[lang_code]
         language_outdir = args.outdir / lang_code
         ipa_path, noipa_path = write_language_wordlists(
             language_outdir,
             lang_code,
-            words_seen[lang_code],
-            word_ipas[lang_code],
+            language.words,
+            language.word_ipas,
         )
 
-        with_ipa = len(word_ipas[lang_code])
-        without_ipa = len(words_seen[lang_code]) - with_ipa
+        with_ipa = len(language.word_ipas)
+        without_ipa = len(language.words) - with_ipa
         print(f"\nLanguage {lang_code}")
-        print(f"  Matching records          : {matched[lang_code]}")
-        print(f"  Non-Latin words rejected  : {script_rejected[lang_code]}")
-        print(f"  Junk IPA values dropped   : {junk_ipa_dropped[lang_code]}")
+        print(f"  Matching records          : {language.matched}")
+        print(f"  Non-Latin words rejected  : {language.script_rejected}")
+        print(f"  Junk IPA values dropped   : {language.junk_ipa_dropped}")
         print(f"  Unique words with IPA     : {with_ipa} -> {ipa_path}")
         print(f"  Unique words without IPA  : {without_ipa} -> {noipa_path}")
 

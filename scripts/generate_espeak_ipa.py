@@ -14,7 +14,7 @@ import subprocess
 import sys
 import unicodedata
 from pathlib import Path
-from typing import TextIO
+from typing import Iterable, TextIO
 
 
 DEFAULT_LANGUAGES = ("en", "de", "tr")
@@ -103,6 +103,18 @@ def validate_input(path: Path) -> int:
     return word_count
 
 
+def iter_word_batches(source: Iterable[str], batch_size: int) -> Iterable[list[str]]:
+    """Yield newline-stripped word batches without retaining the whole input."""
+    batch: list[str] = []
+    for line in source:
+        batch.append(line.rstrip("\r\n"))
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
 def call_espeak(executable: str, lang_code: str, words: list[str]) -> list[str]:
     input_text = "".join(f"{word}\n" for word in words)
     result = subprocess.run(
@@ -165,20 +177,7 @@ def generate_language(
             input_path.open("r", encoding="utf-8") as source,
             part_path.open("w", encoding="utf-8", newline="\n") as output,
         ):
-            batch: list[str] = []
-            for line in source:
-                batch.append(line.rstrip("\r\n"))
-                if len(batch) < batch_size:
-                    continue
-                pronunciations = call_espeak(executable, lang_code, batch)
-                generated_now, empty_now = write_batch(batch, pronunciations, output)
-                generated += generated_now
-                empty += empty_now
-                processed += len(batch)
-                progress.update(processed)
-                batch.clear()
-
-            if batch:
+            for batch in iter_word_batches(source, batch_size):
                 pronunciations = call_espeak(executable, lang_code, batch)
                 generated_now, empty_now = write_batch(batch, pronunciations, output)
                 generated += generated_now

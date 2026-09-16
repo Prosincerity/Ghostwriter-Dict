@@ -93,6 +93,16 @@ CONSONANTS = {
     ),
 }
 
+PHONEME_CANDIDATES = {
+    lang_code: tuple(
+        sorted(
+            VOWELS[lang_code] | CONSONANTS[lang_code],
+            key=lambda value: (-len(value), value),
+        )
+    )
+    for lang_code in LANGUAGES
+}
+
 # Spacing modifier letters and IPA marks that qualify the preceding phoneme.
 # Unicode combining marks are attached by category in ``tokenize_ipa`` too.
 POSTFIX_MODIFIERS = frozenset(
@@ -164,9 +174,7 @@ class ProgressBar:
 
 
 def inventory(lang_code: str) -> tuple[frozenset[str], tuple[str, ...]]:
-    vowels = VOWELS[lang_code]
-    phonemes = vowels | CONSONANTS[lang_code]
-    return vowels, tuple(sorted(phonemes, key=lambda value: (-len(value), value)))
+    return VOWELS[lang_code], PHONEME_CANDIDATES[lang_code]
 
 
 def is_postfix_modifier(character: str) -> bool:
