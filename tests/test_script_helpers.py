@@ -2,6 +2,7 @@ import gzip
 import importlib.util
 import io
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -107,6 +108,35 @@ class ExtractionHelperTest(unittest.TestCase):
                 with self.subTest(path=path.name), EXTRACT.open_jsonl(path) as source:
                     self.assertEqual(json.loads(source.readline())["word"], expected)
                     self.assertGreater(EXTRACT.input_position(source, path), 0)
+
+    def test_wordlist_write_failure_preserves_existing_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            language_dir = Path(temp_dir) / "en"
+            language_dir.mkdir()
+            ipa_path = language_dir / "wordlist_en_ipa.txt"
+            noipa_path = language_dir / "wordlist_en_noipa.txt"
+            ipa_path.write_text("previous IPA\n", encoding="utf-8")
+            noipa_path.write_text("previous no-IPA\n", encoding="utf-8")
+            words = {"word": None, "missing": None}
+            word_ipas = {"word": {"/wɜːd/": None}}
+            real_replace = os.replace
+
+            def fail_first_replace(source, destination):
+                if Path(destination) == ipa_path:
+                    raise OSError("replace failed")
+                return real_replace(source, destination)
+
+            with mock.patch.object(EXTRACT.os, "replace", side_effect=fail_first_replace):
+                with self.assertRaisesRegex(OSError, "replace failed"):
+                    EXTRACT.write_language_wordlists(
+                        language_dir, "en", words, word_ipas
+                    )
+
+            self.assertEqual(ipa_path.read_text(encoding="utf-8"), "previous IPA\n")
+            self.assertEqual(
+                noipa_path.read_text(encoding="utf-8"), "previous no-IPA\n"
+            )
+            self.assertEqual(list(language_dir.glob("*.part")), [])
 
 
 class CleanupHelperTest(unittest.TestCase):
@@ -317,6 +347,8 @@ class RhymeDatabaseHelperTest(unittest.TestCase):
             RHYME.validate_release_version("bad release", Path("bad release.db"))
         with self.assertRaisesRegex(ValueError, "must include"):
             RHYME.validate_release_version("release-1", Path("en.db"))
+        with self.assertRaisesRegex(ValueError, "must include"):
+            RHYME.validate_release_version("release-1", Path("en_release-10.db"))
 
 
 class SmokeHelperTest(unittest.TestCase):
@@ -406,6 +438,29 @@ class SmokeHelperTest(unittest.TestCase):
                 SMOKE.validate_database(database, 1),
                 {"integrity": "ok", "rows": 1, "unique_words": 1},
             )
+
+    def test_validate_database_is_read_only_and_rejects_extra_indexes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            missing = root / "missing.db"
+            with self.assertRaisesRegex(FileNotFoundError, "missing database"):
+                SMOKE.validate_database(missing, 0)
+            self.assertFalse(missing.exists())
+
+            database = root / "extra-index.db"
+            connection = sqlite3.connect(database)
+            try:
+                connection.executescript(RHYME.SCHEMA)
+                connection.executescript(RHYME.INDEXES)
+                connection.execute(
+                    "CREATE INDEX unexpected_word_index ON dictionary(word)"
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            with self.assertRaisesRegex(RuntimeError, "unexpected dictionary indexes"):
+                SMOKE.validate_database(database, 0)
 
 
 if __name__ == "__main__":

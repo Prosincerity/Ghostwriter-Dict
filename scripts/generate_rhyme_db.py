@@ -357,9 +357,13 @@ def validate_release_version(release_version: str, output_path: Path) -> None:
         raise ValueError(
             "release version must contain only letters, digits, '.', '_', '+', or '-'"
         )
-    if release_version not in output_path.stem:
+    if not (
+        output_path.stem == release_version
+        or output_path.stem.endswith(f"_{release_version}")
+    ):
         raise ValueError(
-            f"output filename must include Kaikki release version {release_version!r}"
+            "output filename must include Kaikki release version "
+            f"{release_version!r} as its final component"
         )
 
 
