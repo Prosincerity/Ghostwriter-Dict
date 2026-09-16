@@ -16,7 +16,7 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES, parse_wordlist_line, tokenize_ipa
 
 
-POLICY_VERSION = "rhyme-cleanup-v7"
+POLICY_VERSION = "rhyme-cleanup-v8"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
 ASCII_HEADWORD_SYMBOLS = frozenset(string.punctuation)
@@ -122,24 +122,14 @@ def is_product_alphanumeric(character: str, lang_code: str) -> bool:
 def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]:
     """Describe a normalized product-ineligible headword, or return ``None``."""
     invalid = Counter()
-    for index, character in enumerate(word):
+    for character in word:
         if (
             is_product_alphanumeric(character, lang_code)
             or character in ASCII_HEADWORD_SYMBOLS
             or character in EXTRA_HEADWORD_LETTERS
         ):
             continue
-        previous = word[index - 1] if index > 0 else None
-        following = word[index + 1] if index + 1 < len(word) else None
-        space_is_valid = (
-            character == " "
-            and previous is not None
-            and following is not None
-            and previous != " "
-            and following != " "
-        )
-        if not space_is_valid:
-            invalid[character] += 1
+        invalid[character] += 1
     if not invalid:
         return None
     characters = [
