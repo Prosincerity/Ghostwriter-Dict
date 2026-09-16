@@ -72,49 +72,26 @@ class PhonemeTokenizationTest(unittest.TestCase):
                 self.assertEqual(unknown, Counter({"☃̃": 1}))
 
 
-class DerivedKeyTest(unittest.TestCase):
-    def key(self, ipa, lang_code):
+class DerivedValueTest(unittest.TestCase):
+    def values(self, ipa, lang_code):
         tokens = RHYME_DB.tokenize_ipa(ipa, lang_code)
         return RHYME_DB.derived_values(tokens, lang_code)
 
-    def test_perfect_rhymes_match_and_non_rhymes_do_not(self):
+    def test_complete_ipa_tokens_and_vowels_are_reversed(self):
         examples = {
-            "en": (("/ˈkæt/", "/ˈbæt/"), ("/ˈkæt/", "/ˈkɪt/")),
-            "de": (("/ˈhaʊs/", "/ˈmaʊs/"), ("/ˈhaʊs/", "/ˈmaʊt/")),
-            "tr": (("/biˈlec/", "/tʃiˈlec/"), ("/biˈlec/", "/biˈlen/")),
+            "en": ("/ˈkæt/", ("t æ k ˈ", "æ")),
+            "de": ("/ˈhaʊs/", ("s aʊ h ˈ", "aʊ")),
+            "tr": ("/biˈlec/", ("c e l ˈ i b", "e i")),
         }
-        for lang_code, (rhyming, non_rhyming) in examples.items():
+        for lang_code, (ipa, expected) in examples.items():
             with self.subTest(lang_code=lang_code):
-                self.assertEqual(
-                    self.key(rhyming[0], lang_code)[1],
-                    self.key(rhyming[1], lang_code)[1],
-                )
-                self.assertNotEqual(
-                    self.key(non_rhyming[0], lang_code)[1],
-                    self.key(non_rhyming[1], lang_code)[1],
-                )
+                self.assertEqual(self.values(ipa, lang_code), expected)
 
-    def test_rhyme_key_uses_last_primary_stress_not_a_fixed_tail(self):
-        first = self.key("/ˈkætəɹɪŋ/", "en")[1]
-        second = self.key("/kəˈtɛɹɪŋ/", "en")[1]
-        self.assertNotEqual(first, second)
-        self.assertTrue(first.endswith("æ"))
-        self.assertTrue(second.endswith("ɛ"))
-        # A naive three-phoneme tail would call these a match.
-        self.assertTrue(first.startswith("ŋ ɪ ɹ"))
-        self.assertTrue(second.startswith("ŋ ɪ ɹ"))
+    def test_stress_markers_remain_available_in_reversed_ipa(self):
+        ipa_reversed, _ = self.values("/ˈfoʊtoʊˈgræf/", "en")
+        self.assertEqual(ipa_reversed, "f æ r g ˈ oʊ t oʊ f ˈ")
 
-    def test_no_stress_falls_back_to_last_vowel(self):
-        _, rhyme_key, _, fallback = self.key("/kæt/", "en")
-        self.assertEqual(rhyme_key, "t æ")
-        self.assertTrue(fallback)
-
-    def test_last_primary_stress_wins(self):
-        _, rhyme_key, _, fallback = self.key("/ˈfoʊtoʊˈgræf/", "en")
-        self.assertEqual(rhyme_key, "f æ")
-        self.assertFalse(fallback)
-
-    def test_pure_assonance_matches_without_matching_rhyme(self):
+    def test_pure_assonance_matches_without_matching_full_ipa(self):
         examples = {
             "en": ("/ˈsiːd/", "/ˈfiːl/"),
             "de": ("/ˈmiːtə/", "/ˈbiːnə/"),
@@ -122,30 +99,15 @@ class DerivedKeyTest(unittest.TestCase):
         }
         for lang_code, pair in examples.items():
             with self.subTest(lang_code=lang_code):
-                first = self.key(pair[0], lang_code)
-                second = self.key(pair[1], lang_code)
-                self.assertEqual(first[2], second[2])
-                self.assertNotEqual(first[1], second[1])
-
-    def test_rhyme_and_assonance_columns_are_independent_per_language(self):
-        # Each pair rhymes, but a pre-stress vowel makes the complete vowel
-        # skeletons different.
-        examples = {
-            "en": ("/ˈstoʊn/", "/əˈloʊn/"),
-            "de": ("/ˈliːbə/", "/bəˈliːbə/"),
-            "tr": ("/beˈbec/", "/celeˈbec/"),
-        }
-        for lang_code, pair in examples.items():
-            with self.subTest(lang_code=lang_code):
-                first = self.key(pair[0], lang_code)
-                second = self.key(pair[1], lang_code)
+                first = self.values(pair[0], lang_code)
+                second = self.values(pair[1], lang_code)
                 self.assertEqual(first[1], second[1])
-                self.assertNotEqual(first[2], second[2])
+                self.assertNotEqual(first[0], second[0])
 
 
 class GenerateRhymeDatabaseTest(unittest.TestCase):
     def test_each_language_fixture_builds_expected_schema_and_queries(self):
-        rhyme_pairs = {
+        suffix_pairs = {
             "en": ("cat", "bat"),
             "de": ("Haus", "Maus"),
             "tr": ("bilek", "çilek"),
@@ -153,7 +115,7 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
         expected_rows = {"en": 13, "de": 12, "tr": 12}
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            for lang_code, (word, partner) in rhyme_pairs.items():
+            for lang_code, (word, partner) in suffix_pairs.items():
                 with self.subTest(lang_code=lang_code):
                     output = temp_path / f"{lang_code}_fixture-release.db"
                     result = subprocess.run(
@@ -184,7 +146,6 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                                 "word",
                                 "ipa",
                                 "ipa_reversed",
-                                "rhyme_key_reversed",
                                 "assonance_reversed",
                             ],
                         )
@@ -201,35 +162,51 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                         self.assertTrue(
                             {
                                 "idx_ipa_reversed",
-                                "idx_rhyme_key_reversed",
                                 "idx_assonance_reversed",
                             }.issubset(indexes)
                         )
+                        self.assertNotIn("idx_rhyme_key_reversed", indexes)
                         connection.execute("PRAGMA case_sensitive_like = ON")
+                        reversed_ipas = [
+                            row[0]
+                            for row in connection.execute(
+                                "SELECT ipa_reversed FROM dictionary "
+                                "WHERE word IN (?, ?) ORDER BY word",
+                                (word, partner),
+                            )
+                        ]
+                        self.assertEqual(len(reversed_ipas), 2)
+                        shared_tokens = []
+                        for tokens in zip(
+                            *(value.split(" ") for value in reversed_ipas)
+                        ):
+                            if len(set(tokens)) != 1:
+                                break
+                            shared_tokens.append(tokens[0])
+                        self.assertTrue(shared_tokens)
+                        query_pattern = f"{' '.join(shared_tokens)} %"
                         plan = " ".join(
                             str(value)
                             for value in connection.execute(
                                 "EXPLAIN QUERY PLAN SELECT word FROM dictionary "
-                                "WHERE rhyme_key_reversed LIKE ?",
-                                ("t%" if lang_code == "en" else "s%",),
+                                "WHERE ipa_reversed LIKE ?",
+                                (query_pattern,),
                             ).fetchone()
                         )
-                        self.assertIn("idx_rhyme_key_reversed", plan)
+                        self.assertIn("idx_ipa_reversed", plan)
                         self.assertEqual(
                             connection.execute("SELECT COUNT(*) FROM dictionary").fetchone()[0],
                             expected_rows[lang_code],
                         )
-                        rhyme_key = connection.execute(
-                            "SELECT rhyme_key_reversed FROM dictionary WHERE word = ? LIMIT 1",
-                            (word,),
-                        ).fetchone()[0]
                         matches = {
                             row[0]
                             for row in connection.execute(
-                                "SELECT word FROM dictionary WHERE rhyme_key_reversed = ?",
-                                (rhyme_key,),
+                                "SELECT word FROM dictionary "
+                                "WHERE ipa_reversed LIKE ?",
+                                (query_pattern,),
                             )
                         }
+                        self.assertIn(word, matches)
                         self.assertIn(partner, matches)
                     finally:
                         connection.close()
