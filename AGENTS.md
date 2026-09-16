@@ -70,7 +70,7 @@ separate to preserve provenance.
 
 ## Rhyme-product cleanup
 
-Never modify canonical lists in place. `rhyme-cleanup-v5` creates
+Never modify canonical lists in place. `rhyme-cleanup-v7` creates
 `wordlist_<lang>_rhyme_eligible.txt` or
 `wordlist_<lang>_espeak_rhyme_eligible.txt` and applies these rules:
 
@@ -79,12 +79,13 @@ Never modify canonical lists in place. `rhyme-cleanup-v5` creates
   `ÂâÎîÛû`, and `QqWwXx`. All languages allow ASCII digits.
 - Normalize `’`, `‘`, and `ʼ` to `'`; Unicode dash connectors to `-`;
   subscript digits to ASCII; and remove soft hyphens.
-- The normalized headword may contain alphanumeric segments, single internal
-  `-` connectors, internal or terminal `'`, structured periods, and single
-  ASCII spaces between segments. Accept phrases, abbreviations, and elisions
-  such as `Victory Day`, `t.b.a.`, `a. a. O.`, and `losin'`. Reject malformed
-  punctuation, combining forms, Braille, dotted-circle notation, enclosed
-  letters, other symbols, and emoji.
+- The normalized headword may contain the language's accepted letters, ASCII
+  digits, every printable ASCII keyboard punctuation character, the Hawaiian
+  ʻokina (`U+02BB`), and single internal ASCII spaces. Accept forms such as
+  `'cause`, `Hawaiʻian`, `Dungeons & Dragons`, `AC/DC`, `*NSYNC`, and `100%`.
+  Reject leading, trailing, or repeated spaces, other spacing characters,
+  Braille, dotted-circle notation, enclosed letters, other non-ASCII symbols,
+  and emoji.
 - Split unambiguous `~` IPA alternatives; expand balanced non-nested optional
   groups to at most eight variants; normalize IPA `'` to `ˈ` and `·` to `.`.
 - Reject IPA containing controls, incomplete ellipses, ambiguous commas,
@@ -94,10 +95,12 @@ Never modify canonical lists in place. `rhyme-cleanup-v5` creates
   word only if none survive. Merge and deduplicate IPA when normalized
   headwords collide.
 
-Every cleanup output has atomic audit files in `out/<lang>/reports/`: pronunciation rejections
-(`*_rejected.jsonl`), word rejections (`*_rejected_words.jsonl`), IPA changes
-(`*_changes.jsonl`), word changes (`*_word_changes.jsonl`), and a count report
-(`*_report.json`). Logs retain original values, normalized values where
+Every cleanup output has atomic audit files in `out/<lang>/reports/`: grouped
+pronunciation rejections (`*_rejected.json`), grouped word rejections
+(`*_rejected_words.json`), IPA changes (`*_changes.jsonl`), word changes
+(`*_word_changes.jsonl`), and a count report (`*_report.json`). Rejection JSON
+is pretty-printed with one IPA or word per line under each reason. IPA groups
+also retain detailed entries with original values, normalized values where
 applicable, reasons, and rejected character code points. Record the cleanup
 policy version in reports and release metadata.
 
