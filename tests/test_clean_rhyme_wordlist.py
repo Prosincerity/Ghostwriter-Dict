@@ -73,11 +73,17 @@ class HeadwordCleanupTest(unittest.TestCase):
         examples = {
             "en": "cliché-state-of-the-art",
             "de": "Pokémon-Übergröße2026",
-            "tr": "hâlâ-QWX-7'nci",
+            "tr": "hâlâ-QWXy7'nci",
         }
         for lang_code, word in examples.items():
             with self.subTest(lang_code=lang_code):
                 self.assertIsNone(CLEANER.headword_rejection(word, lang_code))
+
+    def test_shared_alphabet_accepts_latin_loanword_letters_in_all_languages(self):
+        for lang_code in ("en", "de", "tr"):
+            for word in ("cœur", "façade", "piñata", "Łódź", "smörgåsbord"):
+                with self.subTest(lang_code=lang_code, word=word):
+                    self.assertIsNone(CLEANER.headword_rejection(word, lang_code))
 
     def test_reported_examples_are_rejected_with_exact_characters(self):
         examples = {
@@ -95,22 +101,67 @@ class HeadwordCleanupTest(unittest.TestCase):
                     )
                     self.assertTrue(rejection["details"]["invalid_characters"])
 
-    def test_keyboard_symbols_elisions_and_okina_are_allowed(self):
+    def test_audited_separators_elisions_and_okina_are_allowed(self):
         for word in (
             "t.b.a",
-            "t.b.a.",
-            "Dr.",
+            "rock&roll",
             "'cause",
-            "'Murica",
+            "'Merica",
             "Hawaiʻian",
             "AC/DC",
-            "*NSYNC",
             "100%",
             "C++",
-            "email@example.com",
         ):
             with self.subTest(word=word):
                 self.assertIsNone(CLEANER.headword_rejection(word, "en"))
+
+    def test_leading_special_characters_are_rejected(self):
+        examples = {
+            "$hit": "disallowed_headword_characters",
+            "%word": "misplaced_headword_symbol",
+            "-casting": "leading_special_character",
+        }
+        for word, reason in examples.items():
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, "en")
+                self.assertEqual(rejection["reason"], reason)
+
+    def test_single_letter_entries_are_rejected(self):
+        for lang_code, word in (("de", "ü"), ("de", "ö"), ("de", "ß")):
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, lang_code)
+                self.assertEqual(rejection["reason"], "single_letter_headword")
+        self.assertIsNone(CLEANER.headword_rejection("7", "de"))
+
+    def test_trailing_dash_or_dot_is_rejected(self):
+        for word in ("zyg-", "Dr.", "t.b.a."):
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, "en")
+                self.assertEqual(rejection["reason"], "trailing_dash_or_dot")
+
+    def test_separators_must_be_between_letters(self):
+        for word in ("a..b", "a-7", "7-a", "rock&", "a-&b"):
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, "en")
+                self.assertEqual(rejection["reason"], "misplaced_headword_separator")
+
+    def test_requested_obfuscated_entries_are_rejected(self):
+        for word in ("tw*t", "tw*ts", "tw@", "tw@s", "tw@t", "tw@ts"):
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, "en")
+                self.assertEqual(rejection["reason"], "disallowed_headword_characters")
+
+    def test_unaudited_ascii_punctuation_is_rejected(self):
+        for word in ("email@example.com", "word*word"):
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, "en")
+                self.assertEqual(rejection["reason"], "disallowed_headword_characters")
+
+    def test_audited_symbols_must_use_valid_positions(self):
+        for word in ("AC/", "/DC", "100%off", "%100", "C+17", "+C"):
+            with self.subTest(word=word):
+                rejection = CLEANER.headword_rejection(word, "en")
+                self.assertEqual(rejection["reason"], "misplaced_headword_symbol")
 
     def test_malformed_or_non_ascii_spacing_and_symbols_are_rejected(self):
         for word in (
@@ -182,7 +233,7 @@ class WordlistCleanupTest(unittest.TestCase):
                 output.read_text(encoding="utf-8"),
                 source.read_text(encoding="utf-8"),
             )
-            self.assertIn("Cleanup policy       : rhyme-cleanup-v10", result.stdout)
+            self.assertIn("Cleanup policy       : rhyme-cleanup-v11", result.stdout)
             self.assertTrue(CLEANER.output_paths(output)["report"].is_file())
 
     def test_writes_eligible_wordlist_and_audit_sidecars(self):
@@ -204,6 +255,7 @@ class WordlistCleanupTest(unittest.TestCase):
                 ("Word2026", ["/ˈwɝd/"]),
                 ("Victory Day", ["/ˈvɪktəri ˈdeɪ/"]),
                 ("t.b.a.", ["/ˌtiːbiːˈeɪ/"]),
+                ("t.b.a", ["/ˌtiːbiːˈeɪ/"]),
                 ("losin’", ["/ˈluːzɪn/"]),
                 ("'cause", ["/kəz/"]),
                 ("'Murica", ["/ˈmɛɹɪkə/"]),
@@ -211,6 +263,9 @@ class WordlistCleanupTest(unittest.TestCase):
                 ("Dungeons & Dragons", ["/ˈdʌndʒənz ænd ˈdɹæɡənz/"]),
                 ("variants", ["/'vɛəriənts/", "/bad…/", "/vɛər(i)ənts/"]),
                 ("tones", ["/toʊn˦˨/"]),
+                ("$hit", ["/hɪt/"]),
+                ("ü", ["/yː/"]),
+                ("tw*t", ["/twɒt/"]),
             ]
             source.write_text(
                 "".join(
@@ -230,8 +285,8 @@ class WordlistCleanupTest(unittest.TestCase):
             for line in output.read_text(encoding="utf-8").splitlines():
                 word, encoded = line.split("\t", 1)
                 parsed[word] = json.loads(encoded)
-            self.assertIn("-casting", parsed)
-            self.assertIn("anti-", parsed)
+            self.assertNotIn("-casting", parsed)
+            self.assertNotIn("anti-", parsed)
             self.assertNotIn("♥-lichen", parsed)
             self.assertIn("mother-in-law", parsed)
             self.assertIn("state-of-the-art", parsed)
@@ -241,7 +296,8 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn("software", parsed)
             self.assertIn("Word2026", parsed)
             self.assertNotIn("Victory Day", parsed)
-            self.assertIn("t.b.a.", parsed)
+            self.assertNotIn("t.b.a.", parsed)
+            self.assertIn("t.b.a", parsed)
             self.assertIn("losin'", parsed)
             self.assertIn("'cause", parsed)
             self.assertIn("'Murica", parsed)
@@ -251,9 +307,12 @@ class WordlistCleanupTest(unittest.TestCase):
                 parsed["variants"],
                 ["/ˈvɛəriənts/", "/vɛərənts/", "/vɛəriənts/"],
             )
-            self.assertEqual(report["policy_version"], "rhyme-cleanup-v10")
-            self.assertEqual(report["counts"]["eligible_words"], 16)
-            self.assertEqual(report["counts"]["rejected_words"], 3)
+            self.assertNotIn("$hit", parsed)
+            self.assertNotIn("ü", parsed)
+            self.assertNotIn("tw*t", parsed)
+            self.assertEqual(report["policy_version"], "rhyme-cleanup-v11")
+            self.assertEqual(report["counts"]["eligible_words"], 14)
+            self.assertEqual(report["counts"]["rejected_words"], 9)
 
             paths = CLEANER.output_paths(output)
             self.assertEqual(paths["wordlist"], output)
@@ -266,7 +325,7 @@ class WordlistCleanupTest(unittest.TestCase):
             )
             rejected_ipa_text = paths["rejected"].read_text(encoding="utf-8")
             rejects = json.loads(rejected_ipa_text)
-            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v10")
+            self.assertEqual(rejects["policy_version"], "rhyme-cleanup-v11")
             ipa_groups = {
                 group["reason"]: group for group in rejects["groups"]
             }
@@ -275,6 +334,9 @@ class WordlistCleanupTest(unittest.TestCase):
                 {
                     "disallowed_headword_characters",
                     "incomplete_pronunciation",
+                    "leading_special_character",
+                    "single_letter_headword",
+                    "trailing_dash_or_dot",
                 },
             )
             self.assertEqual(
@@ -290,7 +352,7 @@ class WordlistCleanupTest(unittest.TestCase):
             self.assertIn('\n        "/bad…/"', rejected_ipa_text)
             rejected_word_text = paths["rejected_words"].read_text(encoding="utf-8")
             rejected_words = json.loads(rejected_word_text)
-            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v10")
+            self.assertEqual(rejected_words["policy_version"], "rhyme-cleanup-v11")
             self.assertEqual(
                 rejected_words["groups"],
                 [
@@ -300,7 +362,21 @@ class WordlistCleanupTest(unittest.TestCase):
                             "♥-lichen",
                             "Victory Day",
                             "Dungeons & Dragons",
+                            "$hit",
+                            "tw*t",
                         ],
+                    },
+                    {
+                        "reason": "leading_special_character",
+                        "words": ["-casting"],
+                    },
+                    {
+                        "reason": "single_letter_headword",
+                        "words": ["ü"],
+                    },
+                    {
+                        "reason": "trailing_dash_or_dot",
+                        "words": ["anti-", "t.b.a."],
                     },
                 ],
             )
