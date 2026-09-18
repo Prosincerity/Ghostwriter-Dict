@@ -305,7 +305,7 @@ def token_is_vowel(token: str, lang_code: str) -> bool:
 
 def derived_values(tokens: list[str], lang_code: str) -> tuple[str, str]:
     """Compute reversed full IPA and its reversed vowel sequence."""
-    ipa_reversed = " ".join(reversed(tokens))
+    ipa_reversed = "".join(reversed(tokens))
     vowel_tokens = [token for token in tokens if token_is_vowel(token, lang_code)]
     return ipa_reversed, " ".join(reversed(vowel_tokens))
 
