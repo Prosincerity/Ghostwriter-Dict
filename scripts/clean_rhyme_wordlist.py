@@ -22,17 +22,35 @@ from generate_rhyme_db import (
 )
 
 
-POLICY_VERSION = "rhyme-cleanup-v10"
+POLICY_VERSION = "rhyme-cleanup-v11"
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
-ASCII_HEADWORD_SYMBOLS = frozenset(string.punctuation)
-EXTRA_HEADWORD_LETTERS = frozenset("ʻ")
-TURKISH_PRODUCT_ALPHABET = frozenset(
-    "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
-    "abcçdefgğhıijklmnoöprsştuüvyz"
-    "ÂâÎîÛûQqWwXx"
+BASE_HEADWORD_LETTERS = string.ascii_letters
+GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
+TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
+FRENCH_HEADWORD_LETTERS = "ÀÂÆÇÈÉÊËÎÏÔŒÙÛÜŸàâæçèéêëîïôœùûüÿ"
+LOANWORD_HEADWORD_LETTERS = (
+    "ÁÃÅÐÍÌÑÒÓÕØÚÝÞ"
+    "áãåðíìñòóõøúýþ"
+    "ĀĂĄĆĈČĎĐĒĖĘĢĤĪĮĶĹĻĽŁŃŅŇ"
+    "ŐŔŖŘŚŜŠŢŤŪŬŰŲŴŶŹŻŽƏ"
+    "āăąćĉčďđēėęģĥīįķĺļľłńņň"
+    "őŕŗřśŝšţťūŭűųŵŷźżžə"
 )
-BLOCKED_LATIN_LETTERS = frozenset("ǀǁǂǃꝚꝛ")
+ACCEPTED_HEADWORD_LETTERS = frozenset(
+    BASE_HEADWORD_LETTERS
+    + GERMAN_HEADWORD_LETTERS
+    + TURKISH_HEADWORD_LETTERS
+    + FRENCH_HEADWORD_LETTERS
+    + LOANWORD_HEADWORD_LETTERS
+    + "ʻ"
+)
+ACCEPTED_HEADWORD_ALPHANUMERICS = ACCEPTED_HEADWORD_LETTERS | frozenset(
+    string.digits
+)
+INTERNAL_HEADWORD_SEPARATORS = frozenset(".-&")
+SPECIAL_HEADWORD_SYMBOLS = frozenset("/%+")
+HEADWORD_APOSTROPHE = "'"
 HEADWORD_TRANSLATION = str.maketrans(
     {
         "’": "'",
@@ -129,15 +147,9 @@ def normalize_headword(word: str) -> tuple[str, list[str]]:
 
 
 def is_product_alphanumeric(character: str, lang_code: str) -> bool:
-    if character in "0123456789":
-        return True
-    if lang_code == "tr":
-        return character in TURKISH_PRODUCT_ALPHABET
-    return (
-        character not in BLOCKED_LATIN_LETTERS
-        and unicodedata.category(character).startswith("L")
-        and unicodedata.name(character, "").startswith("LATIN")
-    )
+    """Return whether a character is in the shared product alphabet."""
+    del lang_code  # All product languages intentionally use the same alphabet.
+    return character in ACCEPTED_HEADWORD_ALPHANUMERICS
 
 
 def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]:
@@ -151,25 +163,100 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
     for character in word:
         if (
             is_product_alphanumeric(character, lang_code)
-            or character in ASCII_HEADWORD_SYMBOLS
-            or character in EXTRA_HEADWORD_LETTERS
+            or character in INTERNAL_HEADWORD_SEPARATORS
+            or character in SPECIAL_HEADWORD_SYMBOLS
+            or character == HEADWORD_APOSTROPHE
         ):
             continue
         invalid[character] += 1
-    if not invalid:
-        return None
-    characters = [
-        {
-            "character": character,
-            "codepoint": f"U+{ord(character):04X}",
-            "count": count,
+    if invalid:
+        characters = [
+            {
+                "character": character,
+                "codepoint": f"U+{ord(character):04X}",
+                "count": count,
+            }
+            for character, count in sorted(invalid.items())
+        ]
+        return {
+            "reason": "disallowed_headword_characters",
+            "details": {"invalid_characters": characters},
         }
-        for character, count in sorted(invalid.items())
-    ]
-    return {
-        "reason": "disallowed_headword_characters",
-        "details": {"invalid_characters": characters},
-    }
+
+    if len(word) == 1 and word in ACCEPTED_HEADWORD_LETTERS:
+        return {
+            "reason": "single_letter_headword",
+            "details": {"character": word},
+        }
+
+    for position, character in enumerate(word):
+        if character in INTERNAL_HEADWORD_SEPARATORS:
+            if position == 0:
+                return {
+                    "reason": "leading_special_character",
+                    "details": {"character": character, "position": position},
+                }
+            if position == len(word) - 1 and character in ".-":
+                return {
+                    "reason": "trailing_dash_or_dot",
+                    "details": {"character": character, "position": position},
+                }
+            if (
+                position == len(word) - 1
+                or word[position - 1] not in ACCEPTED_HEADWORD_LETTERS
+                or word[position + 1] not in ACCEPTED_HEADWORD_LETTERS
+            ):
+                return {
+                    "reason": "misplaced_headword_separator",
+                    "details": {"character": character, "position": position},
+                }
+        elif character == HEADWORD_APOSTROPHE:
+            left_is_alphanumeric = (
+                position > 0
+                and word[position - 1] in ACCEPTED_HEADWORD_ALPHANUMERICS
+            )
+            right_is_alphanumeric = (
+                position + 1 < len(word)
+                and word[position + 1] in ACCEPTED_HEADWORD_ALPHANUMERICS
+            )
+            if not (left_is_alphanumeric or right_is_alphanumeric):
+                return {
+                    "reason": "misplaced_headword_apostrophe",
+                    "details": {"character": character, "position": position},
+                }
+        elif character == "/":
+            if (
+                position == 0
+                or position == len(word) - 1
+                or word[position - 1] not in ACCEPTED_HEADWORD_LETTERS
+                or word[position + 1] not in ACCEPTED_HEADWORD_LETTERS
+            ):
+                return {
+                    "reason": "misplaced_headword_symbol",
+                    "details": {"character": character, "position": position},
+                }
+        elif character == "%":
+            if (
+                position == 0
+                or position != len(word) - 1
+                or word[position - 1] not in string.digits
+            ):
+                return {
+                    "reason": "misplaced_headword_symbol",
+                    "details": {"character": character, "position": position},
+                }
+        elif character == "+":
+            plus_start = word.find("+")
+            if (
+                plus_start == 0
+                or word[plus_start - 1] not in ACCEPTED_HEADWORD_LETTERS
+                or any(symbol != "+" for symbol in word[plus_start:])
+            ):
+                return {
+                    "reason": "misplaced_headword_symbol",
+                    "details": {"character": character, "position": position},
+                }
+    return None
 
 
 def wrapper(value: str) -> Optional[tuple[str, str, str]]:
