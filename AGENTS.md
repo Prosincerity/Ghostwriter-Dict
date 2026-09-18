@@ -7,6 +7,8 @@ audited SQLite pronunciation indexes. Read `README.md` before substantial
 changes.
 
 - `scripts/download_and_process.sh`: complete archive-to-database build
+- `scripts/clean_and_build.sh`: cleanup and database rebuild from existing IPA
+  lists; never downloads, extracts, or invokes eSpeak
 - `scripts/extract_ipa.py`: canonical Wiktionary IPA/no-IPA extraction
 - `scripts/generate_espeak_ipa.py`: missing-IPA generation
 - `scripts/clean_rhyme_wordlist.py`: product cleanup and audit reports
@@ -54,12 +56,16 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v10` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v11` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
-- English and German accept Latin letters except `ǀǁǂǃꝛꝚ`; Turkish accepts
-  its 29 letters plus `ÂâÎîÛûQqWwXx`. All languages accept ASCII digits,
-  printable ASCII punctuation, and Hawaiian ʻokina (`U+02BB`).
+- All languages share the same curated Latin alphabet covering English,
+  German, Turkish, French, and common loanword letters, plus ASCII digits and
+  Hawaiian ʻokina (`U+02BB`). Extend the shared alphabet deliberately.
+- Accept apostrophes attached to letters or digits. Dots, dashes, ampersands,
+  and slashes are valid only between letters. Percent signs may follow terminal
+  numbers; one or more plus signs may follow terminal letters. Reject other
+  punctuation, misplaced symbols, and single-letter headwords.
 - Normalize typographic apostrophes, Unicode dashes, subscript digits, and soft
   hyphens. The result must be one token; reject spaces and unsupported symbols.
 - Split unambiguous alternatives, expand at most eight non-nested optional
@@ -94,9 +100,9 @@ CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
 Tokenize with the audited language inventory; never reverse raw characters or
-silently accept/drop unknown symbols. Store space-delimited reversed complete
-tokens in `ipa_reversed` and reversed vowel tokens in `assonance_reversed`.
-Create indexes after bulk insertion.
+silently accept/drop unknown symbols. Store reversed complete tokens without
+separators or whitespace in `ipa_reversed`; keep reversed vowel tokens
+space-delimited in `assonance_reversed`. Create indexes after bulk insertion.
 
 Do not add a rhyme key, consonance key, fixed tail, syllable data, or
 syllabification. Compound identity-rhyme filtering remains an on-device concern.
@@ -107,7 +113,7 @@ Run:
 
 ```bash
 python3 -B -m unittest discover -s tests -v
-bash -n scripts/download_and_process.sh  # after shell changes
+bash -n scripts/download_and_process.sh scripts/clean_and_build.sh
 ```
 
 Tests must not require real datasets or eSpeak. Code and tests are MIT

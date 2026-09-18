@@ -36,9 +36,11 @@ This project modifies the source data by:
 - extracting headwords and IPA/audio-IPA values;
 - normalizing strings to Unicode NFC;
 - deduplicating words and pronunciations;
-- removing unusable IPA placeholders and malformed records; and
-- excluding headwords containing non-Latin letters from the current
-  English/German/Turkish output; and
+- removing unusable IPA placeholders and malformed records;
+- filtering product headwords with a shared curated Latin alphabet and
+  position-sensitive punctuation rules;
+- validating and normalizing pronunciation notation;
+- deriving reversed IPA and vowel-only search values for rhyme indexes; and
 - optionally generating pronunciations for missing-IPA words with eSpeak NG,
   stored in separately identified `wordlist_<language>_espeak_ipa.txt` files.
 
