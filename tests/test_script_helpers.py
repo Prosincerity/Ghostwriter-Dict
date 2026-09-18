@@ -439,7 +439,7 @@ class SmokeHelperTest(unittest.TestCase):
                 connection.executescript(RHYME.SCHEMA)
                 connection.execute(
                     "INSERT INTO dictionary VALUES (?, ?, ?, ?)",
-                    ("cat", "/kæt/", "t æ k", "æ"),
+                    ("cat", "/kæt/", "tæk", "æ"),
                 )
                 connection.executescript(RHYME.INDEXES)
                 connection.commit()

@@ -79,9 +79,9 @@ class DerivedValueTest(unittest.TestCase):
 
     def test_complete_ipa_tokens_and_vowels_are_reversed(self):
         examples = {
-            "en": ("/ˈkæt/", ("t æ k ˈ", "æ")),
-            "de": ("/ˈhaʊs/", ("s aʊ h ˈ", "aʊ")),
-            "tr": ("/biˈlec/", ("c e l ˈ i b", "e i")),
+            "en": ("/ˈkæt/", ("tækˈ", "æ")),
+            "de": ("/ˈhaʊs/", ("saʊhˈ", "aʊ")),
+            "tr": ("/biˈlec/", ("celˈib", "e i")),
         }
         for lang_code, (ipa, expected) in examples.items():
             with self.subTest(lang_code=lang_code):
@@ -89,7 +89,8 @@ class DerivedValueTest(unittest.TestCase):
 
     def test_stress_markers_remain_available_in_reversed_ipa(self):
         ipa_reversed, _ = self.values("/ˈfoʊtoʊˈgræf/", "en")
-        self.assertEqual(ipa_reversed, "f æ r g ˈ oʊ t oʊ f ˈ")
+        self.assertEqual(ipa_reversed, "færgˈoʊtoʊfˈ")
+        self.assertFalse(any(character.isspace() for character in ipa_reversed))
 
     def test_pure_assonance_matches_without_matching_full_ipa(self):
         examples = {
@@ -176,15 +177,13 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                             )
                         ]
                         self.assertEqual(len(reversed_ipas), 2)
-                        shared_tokens = []
-                        for tokens in zip(
-                            *(value.split(" ") for value in reversed_ipas)
-                        ):
-                            if len(set(tokens)) != 1:
+                        shared_prefix = []
+                        for characters in zip(*reversed_ipas):
+                            if len(set(characters)) != 1:
                                 break
-                            shared_tokens.append(tokens[0])
-                        self.assertTrue(shared_tokens)
-                        query_pattern = f"{' '.join(shared_tokens)} %"
+                            shared_prefix.append(characters[0])
+                        self.assertTrue(shared_prefix)
+                        query_pattern = f"{''.join(shared_prefix)}%"
                         plan = " ".join(
                             str(value)
                             for value in connection.execute(
