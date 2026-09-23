@@ -23,6 +23,18 @@ The Wiktionary data was converted to machine-readable JSONL by
 download information are available on the
 [Kaikki raw-data page](https://kaikki.org/dictionary/rawdata.html).
 
+Missing pronunciations are generated from Wiktionary headwords with
+[eSpeak NG](https://github.com/espeak-ng/espeak-ng). eSpeak NG is licensed under
+GPL-3.0-or-later, but its GPL license does not apply to these generated IPA
+transcriptions merely because the program produced them; see the
+[GNU GPL FAQ on program output](https://www.gnu.org/licenses/gpl-faq.en.html#WhatCaseIsOutputGPL).
+The eSpeak wordlists and SQLite indexes retain the Wiktionary-derived
+headwords, so this project distributes those artifacts under CC BY-SA 4.0
+alongside the Wiktionary-derived artifacts. The separate eSpeak filenames
+identify how their pronunciations were produced; they are not a claim that
+eSpeak NG itself is licensed under CC BY-SA 4.0. This project does not
+distribute the eSpeak NG program or its voice data.
+
 Copyright in the original Wiktionary material remains with its respective
 contributors. This project does not claim exclusive ownership of that
 material.
