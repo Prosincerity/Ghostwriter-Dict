@@ -209,5 +209,11 @@ on-device consumer.
   [LICENSE-DATA.md](LICENSE-DATA.md).
 - Repository licensing map: [LICENSE](LICENSE).
 
+eSpeak NG is GPL-3.0-or-later, but using it to generate missing IPA does not
+make that output GPL-licensed. The eSpeak-derived files retain
+Wiktionary-sourced headwords and are distributed under the same CC BY-SA 4.0
+data notice; their filenames keep the generation method visible. See
+[LICENSE-DATA.md](LICENSE-DATA.md) for the provenance and license distinction.
+
 Source data can contain errors, offensive or obsolete terms, regional
 variants, and inaccurate pronunciations. Audit it before production use.
