@@ -61,6 +61,17 @@ out/tr/tr_kaikki-vYYYYMMDD.db
 out/tr/tr_espeak_kaikki-vYYYYMMDD.db
 ```
 
+For GitHub release assets, compress all six finished databases at gzip level 9
+and write the checksum manifest:
+
+```bash
+python3 scripts/package_release.py --release-version kaikki-v20260902
+```
+
+This creates `*.db.gz` beside each database in `out/<lang>/` and replaces
+`out/SHA256SUMS` with six `sha256sum`-compatible lines for the compressed files.
+Verify from `out/` with `sha256sum -c SHA256SUMS`.
+
 ## Generated artifacts
 
 Each language directory contains:
@@ -166,6 +177,7 @@ scripts/extract_ipa.py
 scripts/generate_espeak_ipa.py
 scripts/clean_rhyme_wordlist.py
 scripts/generate_rhyme_db.py
+scripts/package_release.py
 ```
 
 Default repository paths are resolved relative to each script, so commands work
