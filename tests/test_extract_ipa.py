@@ -1,10 +1,12 @@
 import gzip
+import importlib.util
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -18,6 +20,37 @@ def write_gzip_jsonl(path, records):
 
 
 class ExtractIpaTest(unittest.TestCase):
+    def test_default_output_is_script_relative(self):
+        spec = importlib.util.spec_from_file_location("extract_ipa", EXTRACTOR)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+            with patch.object(sys, "argv", [str(EXTRACTOR), "input.jsonl", "--lang-code", "en"]):
+                self.assertEqual(module.parse_args().outdir, PROJECT_DIR / "out")
+        finally:
+            del sys.modules[spec.name]
+
+    def test_malformed_lang_code_does_not_stop_later_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source = temp_path / "entries.jsonl.gz"
+            write_gzip_jsonl(source, [
+                {"word": "broken", "lang_code": ["en"], "sounds": [{"ipa": "/ˈbroʊkən/"}]},
+                {"word": "valid", "lang_code": "en", "sounds": [{"ipa": "/ˈvælɪd/"}]},
+            ])
+            result = subprocess.run(
+                [sys.executable, str(EXTRACTOR), str(source), "--lang-code", "en",
+                 "--outdir", str(temp_path / "out")],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (temp_path / "out" / "en" / "wordlist_en_ipa.txt").read_text(encoding="utf-8"),
+                'valid\t["/ˈvælɪd/"]\n',
+            )
+
     def test_merges_all_dumps_routes_languages_and_removes_duplicates(self):
         german_edition = [
             {

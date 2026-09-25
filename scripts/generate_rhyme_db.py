@@ -25,13 +25,13 @@ from typing import Iterable, Optional, TextIO
 
 LANGUAGES = ("en", "de", "tr")
 STRESS_MARKERS = frozenset(("ˈ", "ˌ"))
-IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩⁽⁾|-‿_⁀‖⫽︎")
+IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩⁽⁾|-‿⁀‖⫽︎")
 
 # These inventories are an audited representation of phonemes occurring in
 # the English, German, and Turkish Kaikki-derived wordlists, including common
 # broad/narrow transcription variants. They are deliberately language-local:
-# an unknown counter makes future source drift visible and provides the input
-# for expanding the appropriate inventory after each release audit.
+# unknown tokens stop the build with their source location so future source
+# drift is visible and the inventory can be expanded after a release audit.
 VOWELS = {
     "en": frozenset(
         (
@@ -351,7 +351,14 @@ def iter_rows(
             bytes_processed += len(line.encode("utf-8"))
             word, ipas = parse_wordlist_line(input_path, lines, line)
             for ipa in ipas:
-                tokens = tokenize_ipa(ipa, lang_code, unknown)
+                candidate_unknown: Counter[str] = Counter()
+                tokens = tokenize_ipa(ipa, lang_code, candidate_unknown)
+                if candidate_unknown:
+                    unknown.update(candidate_unknown)
+                    raise ValueError(
+                        f"{input_path}:{lines}: unrecognized IPA tokens "
+                        f"for {word!r}, {ipa!r}: {dict(sorted(candidate_unknown.items()))}"
+                    )
                 ipa_reversed, assonance = derived_values(tokens, lang_code)
                 rows += 1
                 yield word, ipa, ipa_reversed, assonance

@@ -242,6 +242,20 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"previous complete database")
             self.assertFalse(Path(f"{output}.part").exists())
 
+    def test_unknown_ipa_rejects_build_and_preserves_previous_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source = temp_path / "unknown.txt"
+            source.write_text('valid\t["/ˈvælɪd/"]\nunknown\t["/ˈa☃/"]\n', encoding="utf-8")
+            output = temp_path / "en_fixture-release.db"
+            output.write_bytes(b"previous complete database")
+
+            with self.assertRaisesRegex(ValueError, "unrecognized IPA tokens.*☃"):
+                RHYME_DB.build_database(source, output, "en", "fixture-release")
+
+            self.assertEqual(output.read_bytes(), b"previous complete database")
+            self.assertFalse(Path(f"{output}.part").exists())
+
     def test_output_filename_must_include_release(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with self.assertRaisesRegex(ValueError, "must include Kaikki release"):

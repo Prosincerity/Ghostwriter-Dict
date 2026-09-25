@@ -329,17 +329,17 @@ class RhymeDatabaseHelperTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     RHYME.parse_wordlist_line(path, 4, line)
 
-    def test_iter_rows_expands_pronunciations_and_reports_unknowns(self):
+    def test_iter_rows_rejects_unknown_tokens_after_valid_sibling(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "words.txt"
             path.write_text('word\t["/ˈkæt/","/a☃/"]\n', encoding="utf-8")
             unknown = Counter()
             progress = mock.Mock()
-            rows = list(RHYME.iter_rows(path, "en", unknown, progress))
-            self.assertEqual(len(rows), 2)
-            self.assertEqual(rows[0][:2], ("word", "/ˈkæt/"))
+            rows = RHYME.iter_rows(path, "en", unknown, progress)
+            self.assertEqual(next(rows)[:2], ("word", "/ˈkæt/"))
+            with self.assertRaisesRegex(ValueError, "unrecognized IPA tokens.*☃"):
+                next(rows)
             self.assertEqual(unknown, Counter({"☃": 1}))
-            progress.update.assert_called_once()
 
     def test_release_version_validation_checks_syntax_and_filename(self):
         RHYME.validate_release_version(

@@ -53,6 +53,12 @@ class PronunciationCleanupTest(unittest.TestCase):
                 self.assertEqual(valid, [])
                 self.assertEqual(rejects[0]["reason"], reason)
 
+    def test_underscore_is_not_silently_discarded_from_ipa(self):
+        valid, _, rejects = self.clean("/ˈa_b/")
+        self.assertEqual(valid, [])
+        self.assertEqual(rejects[0]["reason"], "unrecognized_tokens")
+        self.assertEqual(rejects[0]["details"]["tokens"], {"_": 1})
+
     def test_rejects_pronunciations_with_only_prosody_markers(self):
         for ipa in ("/ˈ/", "[ˌ˥]", "↗"):
             with self.subTest(ipa=ipa):
