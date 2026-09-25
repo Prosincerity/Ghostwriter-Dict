@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reapply product cleanup and rebuild databases from existing IPA wordlists.
+# Reapply product cleanup and rebuild release assets from existing IPA wordlists.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,7 +14,7 @@ usage() {
 Usage: $(basename -- "$0") --release-version VERSION
 
 Clean the existing Wiktionary and eSpeak IPA wordlists, regenerate malformed
-or unstressed Wiktionary IPA with eSpeak NG, then rebuild all six databases.
+or unstressed Wiktionary IPA with eSpeak NG, then rebuild and package all six databases.
 This command does not download archives or extract Wiktionary data.
 
 Options:
@@ -137,7 +137,10 @@ for lang_code in en de tr; do
         --release-version "$RELEASE_VERSION"
 done
 
-echo "Finished databases:"
+echo "Packaging release archives and checksums..."
+python3 "$SCRIPT_DIR/package_release.py" --release-version "$RELEASE_VERSION"
+
+echo "Finished databases (gzip archives are beside them):"
 for lang_code in en de tr; do
     echo "  $OUT_DIR/$lang_code/${lang_code}_${RELEASE_VERSION}.db"
     echo "  $OUT_DIR/$lang_code/${lang_code}_espeak_${RELEASE_VERSION}.db"

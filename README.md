@@ -36,8 +36,8 @@ It reuses canonical wordlists when the archives, extractor code, options, and
 output checksums match. The eSpeak stage similarly checks its input, archives,
 generator code, and output before reusing generated IPA.
 
-To clean existing canonical IPA lists and rebuild databases without downloading
-or extracting, provide their release name:
+To clean existing canonical IPA lists and rebuild packaged databases without
+downloading or extracting, provide their release name:
 
 ```bash
 ./scripts/clean_and_build.sh --release-version kaikki-v20260902
@@ -48,14 +48,8 @@ extreme mismatches to the eSpeak output by default. Add `--report-only` to
 audit mismatches without moving them. `--extreme-distance` changes the mismatch
 threshold. Run either script with `--help` for all options.
 
-The complete build also writes six `*.db.gz` files and `out/SHA256SUMS`. After
-`clean_and_build.sh`, package the databases separately if needed:
-
-```bash
-python3 scripts/package_release.py --release-version kaikki-v20260902
-```
-
-Verify the package from `out/` with `sha256sum -c SHA256SUMS`.
+Both builds write six `*.db.gz` files and `out/SHA256SUMS`. Verify the package
+from `out/` with `sha256sum -c SHA256SUMS`.
 
 ## Outputs
 

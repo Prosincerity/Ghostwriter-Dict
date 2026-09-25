@@ -16,7 +16,7 @@ printf '%s\n' "$*" >> "$CLEAN_BUILD_CALL_LOG"
 
 
 class CleanAndBuildTest(unittest.TestCase):
-    def test_cleans_regenerates_ipa_and_builds_six_databases(self):
+    def test_cleans_builds_and_packages_six_databases(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "project"
             scripts_dir = root / "scripts"
@@ -56,7 +56,7 @@ class CleanAndBuildTest(unittest.TestCase):
             )
 
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 18)
+            self.assertEqual(len(calls), 19)
             self.assertEqual(
                 sum("clean_rhyme_words.py" in call for call in calls), 6
             )
@@ -66,6 +66,10 @@ class CleanAndBuildTest(unittest.TestCase):
                 for call in calls if "clean_rhyme_ipa.py" in call
             ))
             self.assertEqual(sum("generate_rhyme_db.py" in call for call in calls), 6)
+            self.assertEqual(
+                calls[-1],
+                f"{scripts_dir / 'package_release.py'} --release-version {release}",
+            )
             self.assertTrue(all("extract_ipa.py" not in call for call in calls))
             self.assertTrue(
                 all("generate_espeak_ipa.py" not in call for call in calls)
