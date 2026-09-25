@@ -125,7 +125,7 @@ uppercase letters are lowercased before merging; words with two or more
 uppercase letters, such as `ABD`, retain their spelling. For example, `Cat`
 and `cat` become one `cat` row containing their distinct IPA values. The
 extractor reads both `sounds[].ipa` and `sounds[].audio-ipa` and removes
-complete placeholders.
+complete placeholders, including empty IPA wrappers.
 
 Canonical lists intentionally retain phrases, slang, punctuation, digits, and
 emoji for auditing. The product cleanup stage applies the stricter filter.
@@ -173,6 +173,9 @@ stay in the Wiktionary list; successful replacements go to the eSpeak eligible
 list. Existing eSpeak IPA is validated but is not regenerated for missing
 stress. The IPA report records original values, reasons, generated values,
 and counts.
+
+Optional groups may produce at most eight variants across one IPA value's
+alternatives. A stress mark must precede a vowel or syllabic consonant.
 
 The IPA stage also generates eSpeak IPA once per Wiktionary word and compares
 each valid variant using complete phoneme tokens from the audited language

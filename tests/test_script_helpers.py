@@ -73,7 +73,7 @@ class ProgressBarTest(unittest.TestCase):
 
 class ExtractionHelperTest(unittest.TestCase):
     def test_usable_ipa_rejects_only_complete_placeholders(self):
-        for value in (None, 7, "?", " [ ... ] ", "/…/"):
+        for value in (None, 7, "?", " [ ... ] ", "/…/", "[]", "//", "[ ]", "/ /"):
             with self.subTest(value=value):
                 self.assertFalse(EXTRACT.is_usable_ipa(value))
         for value in ("/a/", "[a]", "prefix …", "[a?]"):

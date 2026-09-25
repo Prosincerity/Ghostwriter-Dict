@@ -51,6 +51,30 @@ class ExtractIpaTest(unittest.TestCase):
                 'valid\t["/ˈvælɪd/"]\n',
             )
 
+    def test_empty_ipa_wrappers_route_word_to_noipa(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source = temp_path / "entries.jsonl.gz"
+            write_gzip_jsonl(source, [
+                {"word": "missing", "lang_code": "en", "sounds": [
+                    {"ipa": "[ ]"}, {"audio-ipa": "/ /"},
+                ]},
+            ])
+            result = subprocess.run(
+                [sys.executable, str(EXTRACTOR), str(source), "--lang-code", "en",
+                 "--outdir", str(temp_path / "out")],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (temp_path / "out" / "en" / "wordlist_en_noipa.txt").read_text(encoding="utf-8"),
+                "missing\n",
+            )
+            self.assertEqual(
+                (temp_path / "out" / "en" / "wordlist_en_ipa.txt").read_text(encoding="utf-8"),
+                "",
+            )
+
     def test_merges_all_dumps_routes_languages_and_removes_duplicates(self):
         german_edition = [
             {

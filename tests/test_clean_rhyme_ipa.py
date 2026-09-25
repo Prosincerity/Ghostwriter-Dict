@@ -23,6 +23,9 @@ def rows(path):
 
 
 class PhonemeComparisonTest(unittest.TestCase):
+    def test_stressed_syllabic_consonant_has_a_rhyme_tail(self):
+        self.assertEqual(IPA.stressed_rhyme_tail("/ˈn̩t/", "en"), ["n̩", "t"])
+
     def test_compares_complete_tokens_and_reports_rhyme_tail(self):
         same = IPA.compare_pronunciations("/ˈkæt/", "ˈkæt", "en")
         self.assertEqual(same["phoneme_edits"], 0)

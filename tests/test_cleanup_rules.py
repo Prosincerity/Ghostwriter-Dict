@@ -75,6 +75,21 @@ class PronunciationCleanupTest(unittest.TestCase):
             "too_many_optional_variants",
         )
 
+    def test_optional_variant_limit_applies_across_alternatives(self):
+        valid, _, rejects = self.clean("/a(b)(c)(d)~e(f)(g)(h)/")
+        self.assertEqual(valid, [])
+        self.assertEqual(rejects[0]["reason"], "too_many_optional_variants")
+        plain = "~".join(f"/a{'b' * i}/" for i in range(9))
+        self.assertEqual(len(self.clean(plain)[0]), 9)
+
+    def test_stress_mark_requires_a_following_syllabic_nucleus(self):
+        for ipa in ("/ˈb/", "/abˈc/", "/aˌ/"):
+            with self.subTest(ipa=ipa):
+                valid, _, rejects = self.clean(ipa)
+                self.assertEqual(valid, [])
+                self.assertEqual(rejects[0]["reason"], "misplaced_stress_mark")
+        self.assertEqual(self.clean("/ˈn̩/")[0], ["/ˈn̩/"])
+
 
 class HeadwordCleanupTest(unittest.TestCase):
     def test_language_alphabets_and_ascii_digits_are_allowed(self):
