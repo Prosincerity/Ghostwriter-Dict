@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Iterable, Mapping, TextIO
 
+from build_reports import archive_sources, sha256_file, write_json
+
 
 # Square brackets and slashes are valid IPA delimiters. Only values whose
 # complete content is a broken/unexpanded placeholder are rejected.
@@ -206,6 +208,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="reject headwords containing non-Latin letters",
     )
+    parser.add_argument(
+        "--reuse-if-current", action="store_true",
+        help="reuse complete wordlists when archives and extractor code are unchanged",
+    )
     return parser.parse_args()
 
 
@@ -215,6 +221,32 @@ def main() -> None:
 
     # A dict also removes repeated --lang-code arguments while retaining order.
     lang_codes = tuple(dict.fromkeys(args.lang_codes))
+    sources = archive_sources(args.inputs)
+    source_signature = {
+        "source_archives": sources,
+        "extractor_sha256": sha256_file(Path(__file__)),
+        "latin_headwords_only": args.latin_headwords_only,
+        "languages": list(lang_codes),
+    }
+    if args.reuse_if_current:
+        reusable = True
+        for code in lang_codes:
+            base = args.outdir / code
+            report_path = base / "reports" / "reading" / "report.json"
+            try:
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                paths = (base / f"wordlist_{code}_ipa.txt", base / f"wordlist_{code}_noipa.txt")
+                reusable = reusable and all(report.get(key) == value for key, value in source_signature.items())
+                reusable = reusable and report.get("outputs") == {
+                    str(path.resolve()): sha256_file(path) for path in paths
+                }
+            except (FileNotFoundError, OSError, UnicodeError, ValueError, TypeError):
+                reusable = False
+            if not reusable:
+                break
+        if reusable:
+            print("Reusing canonical wordlists: archives and extractor unchanged")
+            return
     selected_languages = set(lang_codes)
     languages = {code: LanguageExtraction() for code in lang_codes}
 
@@ -319,6 +351,21 @@ def main() -> None:
         print(f"  Junk IPA values dropped   : {language.junk_ipa_dropped}")
         print(f"  Unique words with IPA     : {with_ipa} -> {ipa_path}")
         print(f"  Unique words without IPA  : {without_ipa} -> {noipa_path}")
+        write_json(language_outdir / "reports" / "reading" / "report.json", {
+            **source_signature,
+            "language": lang_code,
+            "records_read": total_lines,
+            "bad_json_records": bad_lines,
+            "invalid_records": invalid_entries,
+            "matching_records": language.matched,
+            "script_rejected": language.script_rejected,
+            "junk_ipa_dropped": language.junk_ipa_dropped,
+            "words_with_ipa": with_ipa,
+            "words_without_ipa": without_ipa,
+            "outputs": {
+                str(path.resolve()): sha256_file(path) for path in (ipa_path, noipa_path)
+            },
+        })
 
 
 if __name__ == "__main__":
