@@ -134,7 +134,7 @@ lines from shifting later pronunciations.
 
 ### Product cleanup
 
-Cleanup policy `rhyme-cleanup-v13` has separate word and IPA stages. Word
+Cleanup policy `rhyme-cleanup-v14` has separate word and IPA stages. Word
 cleanup uses one shared alphabet for all three languages. It includes curated
 English, German, Turkish, French, and common loanword letters, ASCII digits,
 and Hawaiian ʻokina (`U+02BB`).
@@ -143,14 +143,15 @@ Eligible punctuation is position-sensitive:
 
 - Apostrophes may attach to a letter or digit, including leading elisions such
   as `'Merica`.
-- Dots, dashes, ampersands, and slashes must occur between letters; examples
-  include `t.b.a`, `rock&roll`, and `AC/DC`.
+- Dots and dashes are rejected anywhere in a headword, including `A.B.D.` and
+  `inter-galactic`. Ampersands and slashes may occur between letters, as in
+  `rock&roll` and `AC/DC`.
 - A percent sign may follow a terminal number (`100%`).
 - One or more plus signs may follow a terminal letter (`C++`).
 
-The cleanup rejects spaces, misplaced or unsupported punctuation, unsupported
-symbols, and single-letter headwords. It normalizes typographic apostrophes,
-Unicode dashes, subscript digits, and soft hyphens before validation.
+The cleanup rejects spaces, dots, dashes, misplaced or unsupported punctuation,
+unsupported symbols, and single-letter headwords. It normalizes typographic
+apostrophes, Unicode dashes, subscript digits, and soft hyphens before validation.
 
 The word stage only filters and normalizes headwords; it does not change their
 IPA arrays. Both word stages write rejection groups, normalization logs, and
