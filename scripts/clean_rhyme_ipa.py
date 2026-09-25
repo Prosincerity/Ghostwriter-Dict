@@ -99,6 +99,12 @@ def validate_delimiters(value: str) -> bool:
     return not any(character in "/[]" for character in body)
 
 
+def is_syllabic_nucleus(token: str, lang_code: str) -> bool:
+    return token_is_vowel(token, lang_code) or any(
+        mark in token for mark in ("\u0329", "\u030d")
+    )
+
+
 def clean_pronunciation(
     ipa: str, lang_code: str
 ) -> tuple[list[str], list[str], list[dict[str, object]]]:
@@ -114,11 +120,16 @@ def clean_pronunciation(
         return [], [], [{"reason": str(error)}]
 
     candidates: list[str] = []
+    optional_variants = 0
     try:
         for alternative in alternatives:
             expanded, optional_transformations = expand_optional_groups(alternative)
             candidates.extend(expanded)
             transformations.extend(optional_transformations)
+            if optional_transformations:
+                optional_variants += len(expanded)
+            if optional_variants > MAX_OPTIONAL_VARIANTS:
+                raise ValueError("too_many_optional_variants")
     except ValueError as error:
         return [], list(dict.fromkeys(transformations)), [{"reason": str(error)}]
 
@@ -155,6 +166,21 @@ def clean_pronunciation(
                 token not in STRESS_MARKERS | PROSODY_MARKERS for token in tokens
             ):
                 reason = "empty_pronunciation"
+            else:
+                for index, token in enumerate(tokens):
+                    if token not in STRESS_MARKERS:
+                        continue
+                    following = tokens[index + 1:]
+                    next_stress = next(
+                        (offset for offset, value in enumerate(following)
+                         if value in STRESS_MARKERS), len(following)
+                    )
+                    if not any(
+                        is_syllabic_nucleus(value, lang_code)
+                        for value in following[:next_stress]
+                    ):
+                        reason = "misplaced_stress_mark"
+                        break
         if reason:
             rejects.append({"reason": reason, "details": details})
         else:
@@ -199,7 +225,7 @@ def stressed_rhyme_tail(ipa: str, lang_code: str) -> list[str]:
     if not stress_positions:
         return []
     for token_index in range(stress_positions[-1] + 1, len(tokens)):
-        if token_is_vowel(tokens[token_index], lang_code):
+        if is_syllabic_nucleus(tokens[token_index], lang_code):
             return [token for token in tokens[token_index:] if token not in PROSODY_MARKERS]
     return []
 
