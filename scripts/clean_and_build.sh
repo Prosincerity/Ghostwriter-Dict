@@ -11,9 +11,9 @@ usage() {
     cat <<EOF
 Usage: $(basename -- "$0") --release-version VERSION
 
-Clean the existing Wiktionary and eSpeak IPA wordlists, then rebuild all six
-SQLite databases. This command does not download archives, extract Wiktionary
-data, or generate eSpeak pronunciations.
+Clean the existing Wiktionary and eSpeak IPA wordlists, regenerate malformed
+or unstressed Wiktionary IPA with eSpeak NG, then rebuild all six databases.
+This command does not download archives or extract Wiktionary data.
 
 Options:
   --release-version VERSION  Release slug used in database filenames (required)
@@ -68,15 +68,23 @@ echo "Rebuilding cleaned lists and databases for $RELEASE_VERSION"
 for lang_code in en de tr; do
     language_dir="$OUT_DIR/$lang_code"
 
-    echo "Cleaning $lang_code Wiktionary pronunciations..."
-    python3 "$SCRIPT_DIR/clean_rhyme_wordlist.py" \
+    echo "Cleaning $lang_code Wiktionary headwords..."
+    python3 "$SCRIPT_DIR/clean_rhyme_words.py" \
         "$language_dir/wordlist_${lang_code}_ipa.txt" \
-        "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \
+        "$language_dir/wordlist_${lang_code}_wiktionary_words_cleaned.txt" \
         --lang-code "$lang_code"
 
-    echo "Cleaning $lang_code eSpeak pronunciations..."
-    python3 "$SCRIPT_DIR/clean_rhyme_wordlist.py" \
+    echo "Cleaning $lang_code eSpeak headwords..."
+    python3 "$SCRIPT_DIR/clean_rhyme_words.py" \
         "$language_dir/wordlist_${lang_code}_espeak_ipa.txt" \
+        "$language_dir/wordlist_${lang_code}_espeak_words_cleaned.txt" \
+        --lang-code "$lang_code"
+
+    echo "Validating and repairing $lang_code IPA..."
+    python3 "$SCRIPT_DIR/clean_rhyme_ipa.py" \
+        "$language_dir/wordlist_${lang_code}_wiktionary_words_cleaned.txt" \
+        "$language_dir/wordlist_${lang_code}_espeak_words_cleaned.txt" \
+        "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \
         "$language_dir/wordlist_${lang_code}_espeak_rhyme_eligible.txt" \
         --lang-code "$lang_code"
 

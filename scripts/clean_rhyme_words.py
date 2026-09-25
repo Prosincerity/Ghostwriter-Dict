@@ -12,10 +12,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, TextIO
 
-from generate_rhyme_db import LANGUAGES, parse_wordlist_line
+from generate_rhyme_db import LANGUAGES
 
 
-POLICY_VERSION = "rhyme-cleanup-v11"
+POLICY_VERSION = "rhyme-cleanup-v12"
 BASE_HEADWORD_LETTERS = string.ascii_letters
 GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
 TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
@@ -185,6 +185,23 @@ def write_json_line(stream: TextIO, value: dict[str, object]) -> None:
     stream.write("\n")
 
 
+def parse_word_row(path: Path, line_number: int, line: str) -> tuple[str, list[str]]:
+    """Check TSV shape while leaving every IPA string untouched."""
+    row = line.rstrip("\r\n")
+    word, separator, encoded_ipas = row.partition("\t")
+    if not separator or not word or "\t" in encoded_ipas:
+        raise ValueError(f"{path}:{line_number}: expected word<TAB>JSON-array")
+    try:
+        ipas = json.loads(encoded_ipas)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path}:{line_number}: invalid IPA JSON: {error.msg}") from error
+    if not isinstance(ipas, list) or not ipas or any(
+        not isinstance(ipa, str) or not ipa.strip() for ipa in ipas
+    ):
+        raise ValueError(f"{path}:{line_number}: expected non-empty IPA string array")
+    return unicodedata.normalize("NFC", word), ipas
+
+
 def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[str, object]:
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
@@ -220,7 +237,7 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
         ):
             for line_number, line in enumerate(source, start=1):
                 bytes_processed += len(line.encode("utf-8"))
-                word, ipas = parse_wordlist_line(input_path, line_number, line)
+                word, ipas = parse_word_row(input_path, line_number, line)
                 counts["input_words"] += 1
                 counts["input_pronunciations"] += len(ipas)
                 normalized, changed = normalize_headword(word)
