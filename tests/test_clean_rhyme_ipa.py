@@ -22,6 +22,24 @@ def rows(path):
     }
 
 
+class PhonemeComparisonTest(unittest.TestCase):
+    def test_compares_complete_tokens_and_reports_rhyme_tail(self):
+        same = IPA.compare_pronunciations("/ˈkæt/", "ˈkæt", "en")
+        self.assertEqual(same["phoneme_edits"], 0)
+        self.assertEqual(same["phoneme_distance_ratio"], 0.0)
+        self.assertEqual(same["wiktionary_rhyme_tail"], ["æ", "t"])
+        self.assertTrue(same["rhyme_tail_matches"])
+
+        changed = IPA.compare_pronunciations("/ˈkæt/", "/ˈkɑt/", "en")
+        self.assertEqual(changed["phoneme_edits"], 1)
+        self.assertAlmostEqual(changed["phoneme_distance_ratio"], 1 / 3)
+        self.assertFalse(changed["rhyme_tail_matches"])
+
+    def test_unknown_tokens_are_not_silently_dropped(self):
+        with self.assertRaisesRegex(ValueError, "unrecognized IPA tokens"):
+            IPA.compare_pronunciations("/ˈk☃t/", "/ˈkæt/", "en")
+
+
 class IpaRegenerationTest(unittest.TestCase):
     def test_keeps_valid_siblings_and_routes_only_replacements_to_espeak(self):
         with tempfile.TemporaryDirectory() as temp_dir:
