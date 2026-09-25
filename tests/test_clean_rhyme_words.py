@@ -16,7 +16,7 @@ class WordCleanupTest(unittest.TestCase):
             source = root / "source.txt"
             output = root / "cleaned.txt"
             source.write_text(
-                'can’t\t["/kænt/","/broken…/"]\n'
+                'can’t\t["/kænt/"," /broken…/ "]\n'
                 'can\'t\t["/kɑnt/","/kænt/"]\n'
                 'bad word\t["/bæd/"]\n',
                 encoding="utf-8",
@@ -28,7 +28,7 @@ class WordCleanupTest(unittest.TestCase):
             )
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
-                'can\'t\t["/kænt/","/broken…/","/kɑnt/"]\n',
+                'can\'t\t["/kænt/"," /broken…/ ","/kɑnt/"]\n',
             )
             reports = root / "reports"
             changes = [json.loads(line) for line in
