@@ -42,8 +42,9 @@ release. Run the script with `--help` for all options.
 ### Cleanup and database rebuild only
 
 When the existing Wiktionary and eSpeak IPA lists are available, reapply the
-current cleanup policy and rebuild the databases without downloading,
-extracting, or invoking eSpeak:
+current cleanup policy and rebuild the databases without downloading or
+extracting. eSpeak NG is used to replace malformed or unstressed Wiktionary
+pronunciations:
 
 ```bash
 ./scripts/clean_and_build.sh \
@@ -81,6 +82,8 @@ Each language directory contains:
 | `wordlist_<lang>_ipa.txt` | Canonical Wiktionary pronunciations |
 | `wordlist_<lang>_noipa.txt` | Words lacking usable Wiktionary IPA |
 | `wordlist_<lang>_espeak_ipa.txt` | Generated eSpeak pronunciations |
+| `wordlist_<lang>_wiktionary_words_cleaned.txt` | Word-filtered Wiktionary input for IPA validation |
+| `wordlist_<lang>_espeak_words_cleaned.txt` | Word-filtered eSpeak input for IPA validation |
 | `wordlist_<lang>_rhyme_eligible.txt` | Cleaned Wiktionary input for SQLite |
 | `wordlist_<lang>_espeak_rhyme_eligible.txt` | Cleaned eSpeak input for SQLite |
 | `reports/` | Cleanup counts, changes, and grouped rejections |
@@ -119,9 +122,10 @@ lines from shifting later pronunciations.
 
 ### Product cleanup
 
-Cleanup policy `rhyme-cleanup-v11` uses one shared alphabet for all three
-languages. It includes curated English, German, Turkish, French, and common
-loanword letters, ASCII digits, and Hawaiian ʻokina (`U+02BB`).
+Cleanup policy `rhyme-cleanup-v12` has separate word and IPA stages. Word
+cleanup uses one shared alphabet for all three languages. It includes curated
+English, German, Turkish, French, and common loanword letters, ASCII digits,
+and Hawaiian ʻokina (`U+02BB`).
 
 Eligible punctuation is position-sensitive:
 
@@ -136,9 +140,18 @@ The cleanup rejects spaces, misplaced or unsupported punctuation, unsupported
 symbols, and single-letter headwords. It normalizes typographic apostrophes,
 Unicode dashes, subscript digits, and soft hyphens before validation.
 
-Supported IPA alternatives and optional groups are expanded. Malformed
-notation, unknown tokens, and values without a phoneme are rejected.
-Pronunciations are checked independently, so valid siblings remain.
+The word stage only filters and normalizes headwords; it does not change their
+IPA arrays. Both word stages write rejection groups, normalization logs, and
+counts under `out/<lang>/reports/`.
+
+The IPA stage expands supported alternatives and optional groups. It rejects
+malformed notation, unknown tokens, and values without a phoneme. Each
+Wiktionary IPA variant is checked independently. A malformed variant or one
+without `ˈ` or `ˌ` is regenerated with eSpeak NG. Valid Wiktionary siblings
+stay in the Wiktionary list; successful replacements go to the eSpeak eligible
+list. Existing eSpeak IPA is validated but is not regenerated for missing
+stress. The IPA report records original values, reasons, generated values,
+and counts. This stage does not compare every valid Wiktionary IPA with eSpeak.
 
 Cleanup never changes canonical files. Its reports include grouped word and
 IPA rejections, normalization logs, counts, reasons, and policy version.
@@ -178,7 +191,8 @@ scripts/download_and_process.sh
 scripts/clean_and_build.sh
 scripts/extract_ipa.py
 scripts/generate_espeak_ipa.py
-scripts/clean_rhyme_wordlist.py
+scripts/clean_rhyme_words.py
+scripts/clean_rhyme_ipa.py
 scripts/generate_rhyme_db.py
 scripts/package_release.py
 ```
