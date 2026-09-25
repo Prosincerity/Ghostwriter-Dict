@@ -91,11 +91,15 @@ class DownloadAndProcessTest(unittest.TestCase):
             release = "kaikki-v20260902"
             self.assertIn(f"Kaikki release: {release}", result.stdout)
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 17)
+            self.assertEqual(len(calls), 18)
             self.assertIn("extract_ipa.py", calls[0])
             self.assertIn("generate_espeak_ipa.py", calls[1])
             self.assertEqual(sum("clean_rhyme_words.py" in call for call in calls), 6)
             self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
+            self.assertEqual(
+                calls[-1],
+                f"{scripts_dir / 'package_release.py'} --release-version {release}",
+            )
             self.assertTrue(all(
                 "--replace-extreme-mismatches --extreme-distance 0.9" in call
                 for call in calls if "clean_rhyme_ipa.py" in call
@@ -112,6 +116,9 @@ class DownloadAndProcessTest(unittest.TestCase):
                         f"/{lang_code}_espeak_{release}.db" in call
                         for call in calls
                     )
+                )
+                self.assertIn(
+                    f"{lang_code}_espeak_{release}.db.gz", result.stdout
                 )
             self.assertEqual(len(list((root / "raw").glob("*.jsonl.gz"))), 3)
 

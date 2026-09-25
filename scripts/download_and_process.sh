@@ -22,8 +22,8 @@ usage() {
     cat <<EOF
 Usage: $(basename -- "$0") [OPTIONS]
 
-Build canonical wordlists, eSpeak pronunciations, cleaned product lists, and
-six finished SQLite databases for English, German, and Turkish.
+Build canonical wordlists, eSpeak pronunciations, cleaned product lists, six
+SQLite databases, and their gzip release assets for English, German, and Turkish.
 
 Options:
   --release-version VERSION  Override the slug derived from the English date
@@ -249,8 +249,14 @@ for lang_code in en de tr; do
         --release-version "$RELEASE_VERSION"
 done
 
-echo "Finished databases:"
+echo "Packaging release archives and checksums..."
+python3 "$SCRIPT_DIR/package_release.py" --release-version "$RELEASE_VERSION"
+
+echo "Finished databases and release archives:"
 for lang_code in en de tr; do
     echo "  $OUT_DIR/$lang_code/${lang_code}_${RELEASE_VERSION}.db"
+    echo "  $OUT_DIR/$lang_code/${lang_code}_${RELEASE_VERSION}.db.gz"
     echo "  $OUT_DIR/$lang_code/${lang_code}_espeak_${RELEASE_VERSION}.db"
+    echo "  $OUT_DIR/$lang_code/${lang_code}_espeak_${RELEASE_VERSION}.db.gz"
 done
+echo "  $OUT_DIR/SHA256SUMS"

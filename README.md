@@ -20,7 +20,8 @@ outputs are replaced atomically through `.part` files.
 ### Complete rebuild
 
 Download or update the archives, extract canonical lists, generate missing IPA,
-apply product cleanup, and build all six databases:
+apply product cleanup, build all six databases, and package their gzip release
+assets with checksums:
 
 ```bash
 ./scripts/download_and_process.sh
@@ -62,7 +63,7 @@ explicit rebuild can move only extreme mismatches to the eSpeak output:
   --extreme-distance 0.8
 ```
 
-Both workflows produce:
+Both workflows produce these databases:
 
 ```text
 out/en/en_kaikki-vYYYYMMDD.db
@@ -73,16 +74,17 @@ out/tr/tr_kaikki-vYYYYMMDD.db
 out/tr/tr_espeak_kaikki-vYYYYMMDD.db
 ```
 
-For GitHub release assets, compress all six finished databases at gzip level 9
-and write the checksum manifest:
+The complete rebuild also creates six `*.db.gz` files beside the databases and
+`out/SHA256SUMS` with checksums for the compressed files. To package databases
+after a cleanup-only rebuild, run:
 
 ```bash
 python3 scripts/package_release.py --release-version kaikki-v20260902
 ```
 
-This creates `*.db.gz` beside each database in `out/<lang>/` and replaces
-`out/SHA256SUMS` with six `sha256sum`-compatible lines for the compressed files.
-Verify from `out/` with `sha256sum -c SHA256SUMS`.
+This compresses at gzip level 9 and replaces `out/SHA256SUMS` with six
+`sha256sum`-compatible lines. Verify from `out/` with
+`sha256sum -c SHA256SUMS`.
 
 ## Generated artifacts
 
@@ -100,6 +102,7 @@ Each language directory contains:
 | `reports/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | One audited eSpeak comparison per valid Wiktionary IPA |
 | `reports/` | Cleanup counts, changes, and grouped rejections |
 | `*.db` | Finished versioned rhyme indexes |
+| `*.db.gz` | Compressed release assets from the complete rebuild or packaging command |
 
 Pronunciation lists are UTF-8 TSV with one compact JSON array per word:
 
