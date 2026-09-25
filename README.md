@@ -101,7 +101,7 @@ Each language directory contains:
 | `wordlist_<lang>_espeak_words_cleaned.txt` | Word-filtered eSpeak input for IPA validation |
 | `wordlist_<lang>_rhyme_eligible.txt` | Cleaned Wiktionary input for SQLite |
 | `wordlist_<lang>_espeak_rhyme_eligible.txt` | Cleaned eSpeak input for SQLite |
-| `reports/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | One audited eSpeak comparison per valid Wiktionary IPA |
+| `reports/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | Extreme mismatches and comparisons with phoneme distance ratio above 0.5 |
 | `reports/` | Cleanup counts, changes, and grouped rejections |
 | `*.db` | Finished versioned rhyme indexes |
 | `*.db.gz` | Compressed release assets from the complete rebuild or packaging command |
@@ -183,7 +183,9 @@ alternatives. A stress mark must precede a vowel or syllabic consonant.
 The IPA stage also generates eSpeak IPA once per Wiktionary word and compares
 each valid variant using complete phoneme tokens from the audited language
 inventory. Its comparison report includes phoneme edit counts, distance
-normalized by the longer pronunciation, and stressed rhyme tails. The default
+normalized by the longer pronunciation, and stressed rhyme tails. It records
+only extreme mismatches and comparisons with a distance ratio strictly above
+`0.5`; all valid variants are still compared. The default
 for direct `clean_rhyme_ipa.py` calls is report-only; the two build workflows
 pass `--replace-extreme-mismatches` by default. An extreme candidate requires
 at least five phonemes in each pronunciation, four phoneme edits, and a
