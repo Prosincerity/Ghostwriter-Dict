@@ -8,10 +8,11 @@ changes.
 
 - `scripts/download_and_process.sh`: complete archive-to-database build
 - `scripts/clean_and_build.sh`: cleanup and database rebuild from existing IPA
-  lists; never downloads, extracts, or invokes eSpeak
+  lists; never downloads or extracts, but invokes eSpeak for IPA repairs
 - `scripts/extract_ipa.py`: canonical Wiktionary IPA/no-IPA extraction
 - `scripts/generate_espeak_ipa.py`: missing-IPA generation
-- `scripts/clean_rhyme_wordlist.py`: product cleanup and audit reports
+- `scripts/clean_rhyme_words.py`: written-word cleanup and word audit reports
+- `scripts/clean_rhyme_ipa.py`: IPA validation, eSpeak repair, and IPA reports
 - `scripts/generate_rhyme_db.py`: versioned SQLite index creation
 - `tests/`: synthetic tests and the opt-in real-data smoke runner
 
@@ -57,7 +58,7 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v11` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v12` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
 - All languages share the same curated Latin alphabet covering English,
@@ -75,6 +76,9 @@ separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
   orthographic/SAMPA forms, unknown tokens, and values without a phoneme.
 - Validate pronunciations independently, retain valid siblings, and merge
   normalized headword collisions without duplicate IPA.
+- Regenerate malformed and stressless Wiktionary IPA with eSpeak. Keep valid
+  Wiktionary siblings in their source list and route regenerated IPA to the
+  eSpeak list. Audit each rejected candidate and replacement.
 
 Reports must retain policy version, counts, reasons, original/normalized
 values, rejected characters or tokens, and grouped readable rejection lists.
