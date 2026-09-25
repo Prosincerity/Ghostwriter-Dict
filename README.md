@@ -1,300 +1,146 @@
 # Ghostwriter Dictionary Data
 
-Builds English, German, and Turkish pronunciation dictionaries from
-[Kaikki/Wiktextract](https://kaikki.org/dictionary/), fills missing IPA with
-eSpeak NG, applies product filters, and creates SQLite rhyme indexes.
+Builds English, German, and Turkish pronunciation indexes from
+[Kaikki/Wiktextract](https://kaikki.org/dictionary/) data. The pipeline fills
+missing IPA with eSpeak NG, cleans words and pronunciations for rhyme search,
+and creates SQLite databases.
 
 ## Requirements
 
-- Python 3.10+ and Bash
-- `curl` and eSpeak NG for the complete pipeline
-- No third-party Python packages
-- Enough disk space for archives and generated artifacts; extraction may use
-  several gigabytes of memory
+- Python 3.10+, Bash, and `curl`
+- eSpeak NG for IPA generation and cleanup
+- Disk space for the archives and generated files; extraction can use several
+  gigabytes of memory
 
-`raw/` and `out/` are generated and ignored by Git. Archives are streamed and
-outputs are replaced atomically through `.part` files.
+The scripts use only the Python standard library. Run them from any directory.
+Generated `raw/` and `out/` files are ignored by Git.
 
-## Build workflows
+## Build
 
-### Complete build
-
-Download or update the archives, extract canonical lists, generate missing IPA,
-apply product cleanup, build all six databases, and package their gzip release
-assets with checksums:
+For a complete build, including downloads and six packaged databases:
 
 ```bash
 ./scripts/download_and_process.sh
 ```
 
-By default, the release is `kaikki-vYYYYMMDD`, derived from the English
-archive's HTTP `Last-Modified` date. To reuse existing archives, provide the
-release explicitly:
+The release name defaults to `kaikki-vYYYYMMDD`, using the English archive's
+HTTP `Last-Modified` date. To build from local archives without downloading:
 
 ```bash
 ./scripts/download_and_process.sh \
-  --skip-download \
-  --release-version kaikki-v20260902
+  --skip-download --release-version kaikki-v20260902
 ```
 
-Use `--release-version` without `--skip-download` to override the derived
-release. On later runs, extraction reuses its wordlists when all archive
-fingerprints, extractor code, options, and output checksums match. eSpeak
-generation likewise checks its input, archives, generator code, and output.
-The script still checks remote ETags when downloading is enabled. Run the
-script with `--help` for all options.
+On repeat runs, the script checks remote ETags unless downloads are skipped.
+It reuses canonical wordlists when the archives, extractor code, options, and
+output checksums match. The eSpeak stage similarly checks its input, archives,
+generator code, and output before reusing generated IPA.
 
-### Cleanup and database rebuild only
-
-When the existing Wiktionary and eSpeak IPA lists are available, reapply the
-current cleanup policy and rebuild the databases without downloading or
-extracting. eSpeak NG is used to replace malformed or unstressed Wiktionary
-pronunciations:
+To clean existing canonical IPA lists and rebuild databases without downloading
+or extracting, provide their release name:
 
 ```bash
-./scripts/clean_and_build.sh \
-  --release-version kaikki-v20260902
+./scripts/clean_and_build.sh --release-version kaikki-v20260902
 ```
 
-Both build workflows now move extreme mismatches to the eSpeak output by
-default and still write the comparison audit. To inspect the report without
-moving any valid Wiktionary IPA, use:
+Both scripts repair malformed or unstressed Wiktionary IPA with eSpeak and move
+extreme mismatches to the eSpeak output by default. Add `--report-only` to
+audit mismatches without moving them. `--extreme-distance` changes the mismatch
+threshold. Run either script with `--help` for all options.
 
-```bash
-./scripts/clean_and_build.sh \
-  --release-version kaikki-v20260902 \
-  --report-only
-```
-
-Both workflows produce these databases:
-
-```text
-out/en/en_kaikki-vYYYYMMDD.db
-out/en/en_espeak_kaikki-vYYYYMMDD.db
-out/de/de_kaikki-vYYYYMMDD.db
-out/de/de_espeak_kaikki-vYYYYMMDD.db
-out/tr/tr_kaikki-vYYYYMMDD.db
-out/tr/tr_espeak_kaikki-vYYYYMMDD.db
-```
-
-The complete rebuild also creates six `*.db.gz` files beside the databases and
-`out/SHA256SUMS` with checksums for the compressed files. To package databases
-after a cleanup-only rebuild, run:
+The complete build also writes six `*.db.gz` files and `out/SHA256SUMS`. After
+`clean_and_build.sh`, package the databases separately if needed:
 
 ```bash
 python3 scripts/package_release.py --release-version kaikki-v20260902
 ```
 
-This compresses at gzip level 9 and replaces `out/SHA256SUMS` with six
-`sha256sum`-compatible lines. Verify from `out/` with
-`sha256sum -c SHA256SUMS`.
-If publication fails, the packaging command restores the previous archives
-and checksum manifest.
+Verify the package from `out/` with `sha256sum -c SHA256SUMS`.
 
-## Generated artifacts
+## Outputs
 
-Each language directory contains:
+Each `out/<lang>/` directory (`en`, `de`, or `tr`) contains:
 
-| Artifact | Purpose |
+| File | Contents |
 | --- | --- |
-| `wordlist_<lang>_ipa.txt` | Canonical Wiktionary pronunciations |
-| `wordlist_<lang>_noipa.txt` | Words lacking usable Wiktionary IPA |
-| `wordlist_<lang>_espeak_ipa.txt` | Generated eSpeak pronunciations |
-| `reports/downloading/report.json` | Archive fingerprints and per-edition download status |
-| `reports/reading/report.json` | Extraction counts, source and code fingerprints, output checksums |
-| `reports/ipa_generation/report.json` | eSpeak sources, code fingerprint, counts, and reuse status |
-| `reports/cleaning/` | Word and IPA cleanup reports, changes, grouped rejections, and stage summary |
-| `reports/ipa_generation/wordlist_<lang>_espeak_ipa_source.json` | Source report used for eSpeak reuse |
-| `wordlist_<lang>_wiktionary_words_cleaned.txt` | Word-filtered Wiktionary input for IPA validation |
-| `wordlist_<lang>_espeak_words_cleaned.txt` | Word-filtered eSpeak input for IPA validation |
-| `wordlist_<lang>_rhyme_eligible.txt` | Cleaned Wiktionary input for SQLite |
-| `wordlist_<lang>_espeak_rhyme_eligible.txt` | Cleaned eSpeak input for SQLite |
-| `reports/cleaning/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | Extreme mismatches and comparisons with phoneme distance ratio above 0.5 |
-| `*.db` | Finished versioned rhyme indexes |
-| `*.db.gz` | Compressed release assets from the complete rebuild or packaging command |
+| `wordlist_<lang>_ipa.txt` | Canonical Wiktionary IPA |
+| `wordlist_<lang>_noipa.txt` | Words with no usable Wiktionary IPA |
+| `wordlist_<lang>_espeak_ipa.txt` | Generated eSpeak IPA |
+| `wordlist_<lang>_wiktionary_words_cleaned.txt`, `wordlist_<lang>_espeak_words_cleaned.txt` | Inputs after headword cleanup |
+| `wordlist_<lang>_rhyme_eligible.txt`, `wordlist_<lang>_espeak_rhyme_eligible.txt` | Cleaned inputs for SQLite |
+| `<lang>_kaikki-vYYYYMMDD.db`, `<lang>_espeak_kaikki-vYYYYMMDD.db` | Versioned SQLite indexes |
 
-Pronunciation lists are UTF-8 TSV with one compact JSON array per word:
+Reports live in `out/<lang>/reports/`:
+
+| Directory | Contents |
+| --- | --- |
+| `downloading/` | Archive fingerprints and download status (complete build) |
+| `reading/` | Extraction counts, source and code fingerprints, output checksums |
+| `ipa_generation/` | eSpeak counts, reuse status, and source fingerprints |
+| `cleaning/` | Word and IPA counts, changes, rejections, comparisons, and summary |
+
+IPA wordlists are UTF-8 TSV with one JSON array per word:
 
 ```text
 hammer	["/ˈhæmə/","/ˈhæmɚ/"]
 ```
 
-The no-IPA lists contain one unique word per line. Wiktionary and eSpeak data
-remain separate throughout the pipeline so their provenance stays visible.
+No-IPA lists contain one word per line. Wiktionary and eSpeak pronunciations
+remain in separate files.
 
-## Pipeline behavior
+## How the data is processed
 
-### Extraction
+**Extraction.** Every supplied English, German, and Turkish Wiktionary edition
+is searched for all three target languages. Entries are routed by top-level
+`lang_code`. Words and IPA are normalized to Unicode NFC and deduplicated.
+Headwords with fewer than two uppercase letters are lowercased; multi-capital
+spellings are preserved. Both `sounds[].ipa` and `sounds[].audio-ipa` are read.
+Canonical lists retain phrases, punctuation, digits, slang, and emoji so the
+cleanup stage can audit them.
 
-Every English, German, and Turkish Wiktionary edition is searched for all
-three target languages. Entries are routed only by top-level `lang_code`, then
-normalized to Unicode NFC and deduplicated. Headwords with fewer than two
-uppercase letters are lowercased before merging; words with two or more
-uppercase letters, such as `ABD`, retain their spelling. For example, `Cat`
-and `cat` become one `cat` row containing their distinct IPA values. The
-extractor reads both `sounds[].ipa` and `sounds[].audio-ipa` and removes
-complete placeholders, including empty IPA wrappers.
-Malformed UTF-8 records and JSON strings with invalid Unicode surrogates are
-skipped or treated as unusable IPA, so later valid records can still be read.
+**IPA generation.** Words without usable Wiktionary IPA go to the matching
+eSpeak NG voice. Adaptive batches isolate words that produce multiple output
+lines, keeping later pronunciations aligned.
 
-Canonical lists intentionally retain phrases, slang, punctuation, digits, and
-emoji for auditing. The product cleanup stage applies the stricter filter.
+**Product cleanup.** Policy `rhyme-cleanup-v14` writes separate eligible lists
+and never edits the canonical lists. It uses a shared curated Latin alphabet
+for all three languages. It normalizes apostrophes, dashes, subscript digits,
+and soft hyphens, then rejects spaces, unsupported characters, dots, dashes,
+and single-letter headwords. Apostrophes may attach to letters or digits;
+ampersands and slashes must lie between letters; terminal numbers may take `%`
+and terminal letters may take one or more `+` signs.
 
-### eSpeak generation
+IPA cleanup validates each variant independently. It expands supported
+alternatives and up to eight optional variants, rejects malformed or unknown
+phoneme notation, and sends faulty or unstressed Wiktionary variants to eSpeak
+for repair. Valid sibling variants stay in the Wiktionary list. Valid
+Wiktionary IPA is also compared with one eSpeak result per word; the comparison
+report records extreme mismatches and distances above `0.5`. Direct calls to
+`clean_rhyme_ipa.py` default to report-only. An extreme mismatch requires at
+least five phonemes on each side, four edits, and a normalized distance of at
+least `0.8` by default.
 
-Words without usable Wiktionary IPA are sent to their matching eSpeak NG
-voice. Adaptive batch isolation prevents entries that produce multiple output
-lines from shifting later pronunciations. The full build records all three
-downloaded archives, generator code, and each language's no-IPA input fingerprint in
-`out/<lang>/reports/ipa_generation/wordlist_<lang>_espeak_ipa_source.json`. On later runs,
-it reuses the generated eSpeak list when the source report and output still
-match; a changed download or missing output triggers generation.
+**SQLite.** Each `(word, ipa)` pair becomes one row with `ipa_reversed` and
+`assonance_reversed` search values. Complete audited phoneme tokens are
+reversed; vowels in `assonance_reversed` remain space-delimited. Unknown IPA
+tokens stop the build and preserve the previous database. For SQLite prefix
+queries, enable `PRAGMA case_sensitive_like = ON`. Compound identity-rhyme
+filtering belongs in the on-device consumer.
 
-### Product cleanup
+## Validation
 
-Cleanup policy `rhyme-cleanup-v14` has separate word and IPA stages. Word
-cleanup uses one shared alphabet for all three languages. It includes curated
-English, German, Turkish, French, and common loanword letters, ASCII digits,
-and Hawaiian ʻokina (`U+02BB`).
-
-Eligible punctuation is position-sensitive:
-
-- Apostrophes may attach to a letter or digit, including leading elisions such
-  as `'Merica`.
-- Dots and dashes are rejected anywhere in a headword, including `A.B.D.` and
-  `inter-galactic`. Ampersands and slashes may occur between letters, as in
-  `rock&roll` and `AC/DC`.
-- A percent sign may follow a terminal number (`100%`).
-- One or more plus signs may follow a terminal letter (`C++`).
-
-The cleanup rejects spaces, dots, dashes, misplaced or unsupported punctuation,
-unsupported symbols, and single-letter headwords. It normalizes typographic
-apostrophes, Unicode dashes, subscript digits, and soft hyphens before validation.
-
-The word stage only filters and normalizes headwords; it does not change their
-IPA arrays. Both word stages write rejection groups, normalization logs, and
-counts under `out/<lang>/reports/cleaning/`.
-
-The IPA stage expands supported alternatives and optional groups. It rejects
-malformed notation, unknown tokens, values without a phoneme, and dash marked
-IPA fragments such as `/-ˌmeːsɪç/` or `[ˈfʊɐ̯-]`. Each
-Wiktionary IPA variant is checked independently. A malformed variant or one
-without `ˈ` or `ˌ` is regenerated with eSpeak NG. Valid Wiktionary siblings
-stay in the Wiktionary list; successful replacements go to the eSpeak eligible
-list. Existing eSpeak IPA is validated but is not regenerated for missing
-stress. The IPA report records original values, reasons, generated values,
-and counts.
-
-Optional groups may produce at most eight variants across one IPA value's
-alternatives. A stress mark must precede a vowel or syllabic consonant.
-
-The IPA stage also generates eSpeak IPA once per Wiktionary word and compares
-each valid variant using complete phoneme tokens from the audited language
-inventory. Its comparison report includes phoneme edit counts, distance
-normalized by the longer pronunciation, and stressed rhyme tails. It records
-only extreme mismatches and comparisons with a distance ratio strictly above
-`0.5`; all valid variants are still compared. The default
-for direct `clean_rhyme_ipa.py` calls is report-only; the two build workflows
-pass `--replace-extreme-mismatches` by default. An extreme candidate requires
-at least five phonemes in each pronunciation, four phoneme edits, and a
-normalized distance of at least `0.8`.
-That option removes only flagged Wiktionary variants and puts the generated IPA
-in the eSpeak eligible list. Use `--report-only` with either build workflow to
-disable replacement, or `--extreme-distance` to set a threshold between zero
-and one.
-
-Cleanup never changes canonical files. Its reports include grouped word and
-IPA rejections, normalization logs, counts, reasons, and policy version.
-
-### SQLite indexes
-
-Each pronunciation becomes one row in this exact schema:
-
-```sql
-CREATE TABLE dictionary (
-    word TEXT NOT NULL,
-    ipa TEXT NOT NULL,
-    ipa_reversed TEXT NOT NULL,
-    assonance_reversed TEXT NOT NULL,
-    PRIMARY KEY (word, ipa)
-) WITHOUT ROWID;
-
-CREATE INDEX idx_ipa_reversed ON dictionary(ipa_reversed);
-CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
-```
-
-IPA is tokenized with a language-specific inventory before reversal.
-`ipa_reversed` concatenates all complete tokens in reverse order without
-whitespace. `assonance_reversed` contains only reversed vowel tokens and
-remains space-delimited.
-An unrecognized IPA token stops the database build and preserves the previous
-complete database; it is never written into a reversed index.
-
-For SQLite prefix queries, enable `PRAGMA case_sensitive_like = ON`. Rhyme
-prefixes are derived from `ipa_reversed`; no separate rhyme-key column is
-stored.
-
-## Commands
-
-Each command supports `--help`:
-
-```text
-scripts/download_and_process.sh
-scripts/clean_and_build.sh
-scripts/extract_ipa.py
-scripts/generate_espeak_ipa.py
-scripts/clean_rhyme_words.py
-scripts/clean_rhyme_ipa.py
-scripts/generate_rhyme_db.py
-scripts/package_release.py
-```
-
-Default repository paths are resolved relative to each script, so commands work
-from any current directory.
-
-## Testing
-
-Run the synthetic suite and shell syntax check:
+Run the synthetic tests and shell syntax check:
 
 ```bash
 python3 -B -m unittest discover -s tests -v
 bash -n scripts/download_and_process.sh scripts/clean_and_build.sh
 ```
 
-Tests use temporary fixtures and a fake eSpeak executable. They do not require
-real dictionary data.
+Tests use temporary fixtures and a fake eSpeak executable. A real-data sample
+check is available through `tests/scripts/run_rhyme_smoke_test.py --help`.
 
-For an opt-in deterministic sample of existing eligible lists:
+## Licensing and attribution
 
-```bash
-python3 tests/scripts/run_rhyme_smoke_test.py \
-  --sample-size 50000 \
-  --source wiktionary --source espeak \
-  --release-version kaikki-v20260902
-```
-
-Smoke artifacts are written below `out/<lang>/samples/`, `databases/`, and
-`reports/`.
-
-## Scope
-
-The databases intentionally omit consonance keys, fixed phoneme tails,
-syllable counts, and syllabification. Compound identity rhymes may therefore
-match across a complete trailing morpheme; filtering those is left to a future
-on-device consumer.
-
-## Licensing
-
-- Code and tests: MIT, see [LICENSE-CODE](LICENSE-CODE).
-- Downloaded and generated dictionary data: CC BY-SA 4.0, see
-  [LICENSE-DATA.md](LICENSE-DATA.md).
-- Repository licensing map: [LICENSE](LICENSE).
-
-eSpeak NG is GPL-3.0-or-later, but using it to generate missing IPA does not
-make that output GPL-licensed. The eSpeak-derived files retain
-Wiktionary-sourced headwords and are distributed under the same CC BY-SA 4.0
-data notice; their filenames keep the generation method visible. See
-[LICENSE-DATA.md](LICENSE-DATA.md) for the provenance and license distinction.
-
-Source data can contain errors, offensive or obsolete terms, regional
-variants, and inaccurate pronunciations. Audit it before production use.
+Code and tests are MIT licensed ([LICENSE-CODE](LICENSE-CODE)). Downloaded and
+generated dictionary data is CC BY-SA 4.0; see [LICENSE-DATA.md](LICENSE-DATA.md)
+for source attribution, transformation notices, and redistribution terms.
