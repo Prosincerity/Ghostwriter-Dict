@@ -88,7 +88,7 @@ class RhymeSmokeTestTest(unittest.TestCase):
             self.assertFalse((first_output / "en" / "smoke_manifest.json").exists())
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["language"], "en")
-            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v13")
+            self.assertEqual(manifest["cleanup_policy_version"], "rhyme-cleanup-v14")
             self.assertEqual(manifest["release_version"], "fixture-release")
             self.assertEqual(manifest["sample_size"], 5)
             self.assertEqual(manifest["results"][0]["integrity"], "ok")

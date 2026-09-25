@@ -73,9 +73,9 @@ class PronunciationCleanupTest(unittest.TestCase):
 class HeadwordCleanupTest(unittest.TestCase):
     def test_language_alphabets_and_ascii_digits_are_allowed(self):
         examples = {
-            "en": "cliché-state-of-the-art",
-            "de": "Pokémon-Übergröße2026",
-            "tr": "hâlâ-QWXy7'nci",
+            "en": "clichéstateoftheart",
+            "de": "PokémonÜbergröße2026",
+            "tr": "hâlâQWXy7'nci",
         }
         for lang_code, word in examples.items():
             with self.subTest(lang_code=lang_code):
@@ -105,10 +105,10 @@ class HeadwordCleanupTest(unittest.TestCase):
 
     def test_audited_separators_elisions_and_okina_are_allowed(self):
         for word in (
-            "t.b.a",
             "rock&roll",
             "'cause",
             "'Merica",
+            "don't",
             "Hawaiʻian",
             "AC/DC",
             "100%",
@@ -121,7 +121,7 @@ class HeadwordCleanupTest(unittest.TestCase):
         examples = {
             "$hit": "disallowed_headword_characters",
             "%word": "misplaced_headword_symbol",
-            "-casting": "leading_special_character",
+            "-casting": "headword_contains_dash_or_dot",
         }
         for word, reason in examples.items():
             with self.subTest(word=word):
@@ -135,14 +135,17 @@ class HeadwordCleanupTest(unittest.TestCase):
                 self.assertEqual(rejection["reason"], "single_letter_headword")
         self.assertIsNone(WORDS.headword_rejection("7", "de"))
 
-    def test_trailing_dash_or_dot_is_rejected(self):
-        for word in ("zyg-", "Dr.", "t.b.a."):
+    def test_any_dash_or_dot_is_rejected(self):
+        for word in ("inter-galactic", "A.B.D.", "t.b.a", "zyg-", "Dr.",
+                     "-casting", ".word", "a..b", "a-7", "7-a", "a-&b"):
             with self.subTest(word=word):
                 rejection = WORDS.headword_rejection(word, "en")
-                self.assertEqual(rejection["reason"], "trailing_dash_or_dot")
+                self.assertEqual(rejection["reason"], "headword_contains_dash_or_dot")
+                position = rejection["details"]["position"]
+                self.assertEqual(word[position], rejection["details"]["character"])
 
     def test_separators_must_be_between_letters(self):
-        for word in ("a..b", "a-7", "7-a", "rock&", "a-&b"):
+        for word in ("rock&", "rock&&roll"):
             with self.subTest(word=word):
                 rejection = WORDS.headword_rejection(word, "en")
                 self.assertEqual(rejection["reason"], "misplaced_headword_separator")
@@ -181,8 +184,8 @@ class HeadwordCleanupTest(unittest.TestCase):
             with self.subTest(word=word):
                 self.assertIsNotNone(WORDS.headword_rejection(word, "en"))
 
-    def test_internal_hyphens_and_apostrophes_are_allowed(self):
-        for word in ("mother-in-law", "don't", "state-of-the-art", "losin'"):
+    def test_internal_and_edge_apostrophes_are_allowed(self):
+        for word in ("don't", "'Merica", "losin'"):
             with self.subTest(word=word):
                 self.assertIsNone(WORDS.headword_rejection(word, "en"))
 

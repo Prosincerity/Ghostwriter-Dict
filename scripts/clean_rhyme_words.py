@@ -15,7 +15,7 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES
 
 
-POLICY_VERSION = "rhyme-cleanup-v13"
+POLICY_VERSION = "rhyme-cleanup-v14"
 BASE_HEADWORD_LETTERS = string.ascii_letters
 GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
 TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
@@ -39,7 +39,8 @@ ACCEPTED_HEADWORD_LETTERS = frozenset(
 ACCEPTED_HEADWORD_ALPHANUMERICS = ACCEPTED_HEADWORD_LETTERS | frozenset(
     string.digits
 )
-INTERNAL_HEADWORD_SEPARATORS = frozenset(".-&")
+INTERNAL_HEADWORD_SEPARATORS = frozenset("&")
+DISALLOWED_HEADWORD_SEPARATORS = frozenset(".-")
 SPECIAL_HEADWORD_SYMBOLS = frozenset("/%+")
 HEADWORD_APOSTROPHE = "'"
 HEADWORD_TRANSLATION = str.maketrans(
@@ -123,6 +124,7 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
         if (
             is_product_alphanumeric(character, lang_code)
             or character in INTERNAL_HEADWORD_SEPARATORS
+            or character in DISALLOWED_HEADWORD_SEPARATORS
             or character in SPECIAL_HEADWORD_SYMBOLS
             or character == HEADWORD_APOSTROPHE
         ):
@@ -138,6 +140,13 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
             "details": {"invalid_characters": characters},
         }
 
+    for position, character in enumerate(word):
+        if character in DISALLOWED_HEADWORD_SEPARATORS:
+            return {
+                "reason": "headword_contains_dash_or_dot",
+                "details": {"character": character, "position": position},
+            }
+
     if len(word) == 1 and word in ACCEPTED_HEADWORD_LETTERS:
         return {"reason": "single_letter_headword", "details": {"character": word}}
 
@@ -145,8 +154,6 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
         if character in INTERNAL_HEADWORD_SEPARATORS:
             if position == 0:
                 return {"reason": "leading_special_character", "details": {"character": character, "position": position}}
-            if position == len(word) - 1 and character in ".-":
-                return {"reason": "trailing_dash_or_dot", "details": {"character": character, "position": position}}
             if (
                 position == len(word) - 1
                 or word[position - 1] not in ACCEPTED_HEADWORD_LETTERS
