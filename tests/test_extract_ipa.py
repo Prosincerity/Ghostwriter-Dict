@@ -61,6 +61,11 @@ class ExtractIpaTest(unittest.TestCase):
                 "sounds": [{"ipa": "/haˈloː/"}],
             },
             {
+                "word": "hallo",
+                "lang_code": "de",
+                "sounds": [{"ipa": "[haˈloː]"}],
+            },
+            {
                 "word": "Straße",
                 "lang": "Almanca",
                 "lang_code": "de",
@@ -93,6 +98,31 @@ class ExtractIpaTest(unittest.TestCase):
                 "lang_code": "de",
                 "sounds": [{"ipa": "/haˈloː/"}],
             },
+            {"word": "Apple", "lang_code": "en"},
+            {
+                "word": "apple",
+                "lang_code": "en",
+                "sounds": [{"ipa": "/ˈæpəl/"}, {"ipa": "/ˈæpəl/"}],
+            },
+            {
+                "word": "Cat",
+                "lang_code": "en",
+                "sounds": [{"ipa": "/kæt/"}],
+            },
+            {
+                "word": "cat",
+                "lang_code": "en",
+                "sounds": [{"ipa": "[kʰæt]"}, {"ipa": "/kæt/"}],
+            },
+            {
+                "word": "ABD",
+                "lang_code": "en",
+                "sounds": [{"ipa": "/eɪ biː diː/"}],
+            },
+            {"word": "Abd", "lang_code": "en"},
+            {"word": "abd", "lang_code": "en"},
+            {"word": "ABd", "lang_code": "en"},
+            {"word": "iPhone", "lang_code": "en"},
             {"word": "شارع", "lang": "English", "lang_code": "en"},
         ]
 
@@ -148,13 +178,19 @@ class ExtractIpaTest(unittest.TestCase):
 
         self.assertEqual(
             de_ipa,
-            'Hallo\t["/haˈloː/"]\nStraße\t["[ˈʃtʁaːsə]"]\n',
+            'hallo\t["/haˈloː/","[haˈloː]"]\nstraße\t["[ˈʃtʁaːsə]"]\n',
         )
-        self.assertEqual(de_noipa, "Dings\n")
+        self.assertEqual(de_noipa, "dings\n")
         self.assertEqual(tr_ipa, 'kanka\t["/kanka/","[kaŋka]","[kanˈka]"]\n')
         self.assertEqual(tr_noipa, "internet argosu 😎\n")
-        self.assertEqual(en_ipa, 'hammer\t["/ˈhæmə/","/ˈhæmɚ/"]\n')
-        self.assertEqual(en_noipa, "rizz 😎\n")
+        self.assertEqual(
+            en_ipa,
+            'hammer\t["/ˈhæmə/","/ˈhæmɚ/"]\n'
+            'apple\t["/ˈæpəl/"]\n'
+            'cat\t["/kæt/","[kʰæt]"]\n'
+            'ABD\t["/eɪ biː diː/"]\n',
+        )
+        self.assertEqual(en_noipa, "rizz 😎\nabd\nABd\niphone\n")
         self.assertNotIn("شارع", tr_ipa + tr_noipa)
         self.assertNotIn("شارع", en_ipa + en_noipa)
         self.assertNotIn("привет", de_ipa + de_noipa + tr_ipa + tr_noipa)

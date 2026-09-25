@@ -47,6 +47,8 @@ This project modifies the source data by:
 - combining entries from the English, German, and Turkish Wiktionary editions;
 - extracting headwords and IPA/audio-IPA values;
 - normalizing strings to Unicode NFC;
+- lowercasing headwords with fewer than two uppercase letters while preserving
+  multi-capital spellings;
 - deduplicating words and pronunciations;
 - removing unusable IPA placeholders and malformed records;
 - filtering product headwords with a shared curated Latin alphabet and
