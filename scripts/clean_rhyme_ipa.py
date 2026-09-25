@@ -15,7 +15,8 @@ from typing import Optional, TextIO
 from clean_rhyme_words import POLICY_VERSION, write_json_line
 from generate_espeak_ipa import call_espeak, resolve_espeak
 from generate_rhyme_db import (
-    LANGUAGES, PROSODY_MARKERS, STRESS_MARKERS, parse_wordlist_line, tokenize_ipa,
+    LANGUAGES, PROSODY_MARKERS, STRESS_MARKERS, parse_wordlist_line,
+    token_is_vowel, tokenize_ipa,
 )
 
 MAX_OPTIONAL_VARIANTS = 8
@@ -157,6 +158,67 @@ def clean_pronunciation(
             valid.append(candidate)
 
     return list(dict.fromkeys(valid)), list(dict.fromkeys(transformations)), rejects
+
+
+def phoneme_tokens(ipa: str, lang_code: str) -> list[str]:
+    """Get only complete phoneme tokens; never lose an unknown symbol."""
+    unknown: Counter[str] = Counter()
+    tokens = tokenize_ipa(ipa, lang_code, unknown)
+    if unknown:
+        raise ValueError(f"unrecognized IPA tokens: {dict(sorted(unknown.items()))}")
+    return [token for token in tokens if token not in STRESS_MARKERS | PROSODY_MARKERS]
+
+
+def phoneme_edit_distance(left: list[str], right: list[str]) -> int:
+    """Count complete-phoneme insertions, deletions, and substitutions."""
+    if len(left) < len(right):
+        left, right = right, left
+    previous = list(range(len(right) + 1))
+    for left_index, left_token in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_token in enumerate(right, start=1):
+            current.append(min(
+                previous[right_index] + 1,
+                current[right_index - 1] + 1,
+                previous[right_index - 1] + (left_token != right_token),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def stressed_rhyme_tail(ipa: str, lang_code: str) -> list[str]:
+    """Return phonemes from the last stressed vowel through the word's end."""
+    unknown: Counter[str] = Counter()
+    tokens = tokenize_ipa(ipa, lang_code, unknown)
+    if unknown:
+        raise ValueError(f"unrecognized IPA tokens: {dict(sorted(unknown.items()))}")
+    stress_positions = [index for index, token in enumerate(tokens) if token in STRESS_MARKERS]
+    if not stress_positions:
+        return []
+    for token_index in range(stress_positions[-1] + 1, len(tokens)):
+        if token_is_vowel(tokens[token_index], lang_code):
+            return [token for token in tokens[token_index:] if token not in PROSODY_MARKERS]
+    return []
+
+
+def compare_pronunciations(wiktionary_ipa: str, espeak_ipa: str,
+                           lang_code: str) -> dict[str, object]:
+    """Score phoneme divergence and expose the stressed rhyme tails separately."""
+    wiktionary_tokens = phoneme_tokens(wiktionary_ipa, lang_code)
+    espeak_tokens = phoneme_tokens(espeak_ipa, lang_code)
+    edits = phoneme_edit_distance(wiktionary_tokens, espeak_tokens)
+    denominator = max(len(wiktionary_tokens), len(espeak_tokens))
+    wiktionary_tail = stressed_rhyme_tail(wiktionary_ipa, lang_code)
+    espeak_tail = stressed_rhyme_tail(espeak_ipa, lang_code)
+    return {
+        "phoneme_edits": edits,
+        "phoneme_distance_ratio": edits / denominator if denominator else 0.0,
+        "wiktionary_phoneme_count": len(wiktionary_tokens),
+        "espeak_phoneme_count": len(espeak_tokens),
+        "wiktionary_rhyme_tail": wiktionary_tail,
+        "espeak_rhyme_tail": espeak_tail,
+        "rhyme_tail_matches": bool(wiktionary_tail and espeak_tail) and wiktionary_tail == espeak_tail,
+    }
 
 
 class ProgressBar:
