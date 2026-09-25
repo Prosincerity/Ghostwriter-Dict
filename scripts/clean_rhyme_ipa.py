@@ -21,6 +21,9 @@ from generate_rhyme_db import (
 
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
+DEFAULT_EXTREME_DISTANCE = 0.8
+MIN_EXTREME_EDITS = 4
+MIN_EXTREME_PHONEMES = 5
 
 
 def wrapper(value: str) -> Optional[tuple[str, str, str]]:
@@ -221,6 +224,16 @@ def compare_pronunciations(wiktionary_ipa: str, espeak_ipa: str,
     }
 
 
+def is_extreme_mismatch(comparison: dict[str, object], threshold: float) -> bool:
+    """Require both a large relative and absolute difference on long words."""
+    return (
+        comparison["phoneme_distance_ratio"] >= threshold
+        and comparison["phoneme_edits"] >= MIN_EXTREME_EDITS
+        and min(comparison["wiktionary_phoneme_count"],
+                comparison["espeak_phoneme_count"]) >= MIN_EXTREME_PHONEMES
+    )
+
+
 class ProgressBar:
     def __init__(self, label: str, total: int, stream: TextIO = sys.stderr,
                  unit: str = "words"):
@@ -257,6 +270,7 @@ def output_paths(wiki_output: Path, espeak_output: Path) -> dict[str, Path]:
         "espeak": espeak_output,
         "rejected": reports_dir / f"{stem}_ipa_rejected.json",
         "changes": reports_dir / f"{stem}_ipa_changes.jsonl",
+        "comparisons": reports_dir / f"{stem}_ipa_comparisons.jsonl",
         "report": reports_dir / f"{stem}_ipa_report.json",
     }
 
@@ -276,6 +290,9 @@ def create_staging_database(path: Path) -> sqlite3.Connection:
                 position INTEGER NOT NULL, PRIMARY KEY (source, word, ipa)
             ) WITHOUT ROWID;
             CREATE TABLE regeneration (
+                word TEXT PRIMARY KEY, position INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            CREATE TABLE comparison_requests (
                 word TEXT PRIMARY KEY, position INTEGER NOT NULL
             ) WITHOUT ROWID;
             CREATE TABLE rejected (
@@ -344,10 +361,14 @@ def clean_ipa_wordlists(
     lang_code: str,
     executable: str,
     batch_size: int = 1000,
+    replace_extreme_mismatches: bool = False,
+    extreme_distance: float = DEFAULT_EXTREME_DISTANCE,
 ) -> dict[str, object]:
     """Validate both sources and add eSpeak replacements for faulty Wiktionary IPA."""
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1")
+    if not 0.0 < extreme_distance <= 1.0:
+        raise ValueError("extreme_distance must be greater than 0 and at most 1")
     for path in (wiki_input, espeak_input):
         if not path.is_file():
             raise FileNotFoundError(f"missing input wordlist: {path}")
@@ -392,7 +413,10 @@ def clean_ipa_wordlists(
                 staging.execute("INSERT OR IGNORE INTO regeneration VALUES (?, ?)",
                                 (word, position))
 
-        with parts["changes"].open("w", encoding="utf-8", newline="\n") as changes:
+        with (
+            parts["changes"].open("w", encoding="utf-8", newline="\n") as changes,
+            parts["comparisons"].open("w", encoding="utf-8", newline="\n") as comparisons,
+        ):
             input_bytes = wiki_input.stat().st_size + espeak_input.stat().st_size
             scan_progress = ProgressBar("Validating IPA", input_bytes, unit="bytes")
             scanned_bytes = 0
@@ -402,6 +426,11 @@ def clean_ipa_wordlists(
                         for line_number, line in enumerate(source, start=1):
                             scanned_bytes += len(line.encode("utf-8"))
                             word, ipas = parse_wordlist_line(input_path, line_number, line)
+                            if source_name == "wiktionary":
+                                staging.execute(
+                                    "INSERT OR IGNORE INTO comparison_requests VALUES (?, ?)",
+                                    (word, line_number),
+                                )
                             counts[f"{source_name}_input_words"] += 1
                             counts[f"{source_name}_input_pronunciations"] += len(ipas)
                             for ipa in ipas:
@@ -437,54 +466,119 @@ def clean_ipa_wordlists(
                 "SELECT COUNT(*) FROM regeneration"
             ).fetchone()[0]
             counts["regeneration_requested_words"] = regeneration_count
-            progress = ProgressBar(f"Regenerating {lang_code}", regeneration_count)
+            comparison_count = staging.execute(
+                "SELECT COUNT(*) FROM comparison_requests"
+            ).fetchone()[0]
+            counts["comparison_requested_words"] = comparison_count
+            progress = ProgressBar(f"Comparing {lang_code}", comparison_count)
             processed = 0
             batch: list[str] = []
 
-            def regenerate(words: list[str]) -> None:
+            def compare_batch(words: list[str]) -> None:
                 nonlocal processed
                 generated = call_espeak(executable, lang_code, words)
                 if len(generated) != len(words):
                     raise ValueError("eSpeak result count does not match input count")
                 for word, raw_ipa in zip(words, generated):
                     normalized, transformations, rejected = clean_pronunciation(raw_ipa, lang_code)
-                    valid = normalized
-                    if valid:
-                        for ipa in valid:
-                            stage_ipa("espeak", word, ipa)
-                        counts["regenerated_words"] += 1
-                    else:
-                        reject("espeak", word, raw_ipa, "espeak_generation_invalid",
-                               {"validation_reasons": [item["reason"] for item in rejected]}, processed)
-                        counts["regeneration_failed_words"] += 1
-                    reasons = [row[0] for row in staging.execute(
-                        "SELECT DISTINCT reason FROM rejected WHERE source = 'wiktionary' "
-                        "AND word = ? ORDER BY reason", (word,)
+                    needs_regeneration = staging.execute(
+                        "SELECT 1 FROM regeneration WHERE word = ?", (word,)
+                    ).fetchone() is not None
+                    if needs_regeneration:
+                        if normalized:
+                            for ipa in normalized:
+                                stage_ipa("espeak", word, ipa)
+                            counts["regenerated_words"] += 1
+                        else:
+                            reject("espeak", word, raw_ipa, "espeak_generation_invalid",
+                                   {"validation_reasons": [item["reason"] for item in rejected]}, processed)
+                            counts["regeneration_failed_words"] += 1
+                        reasons = [row[0] for row in staging.execute(
+                            "SELECT DISTINCT reason FROM rejected WHERE source = 'wiktionary' "
+                            "AND word = ? ORDER BY reason", (word,)
+                        )]
+                        write_json_line(changes, {
+                            "source": "wiktionary", "word": word,
+                            "action": "regenerated_with_espeak" if normalized else "regeneration_failed",
+                            "original_ipas": [row[0] for row in staging.execute(
+                                "SELECT DISTINCT ipa FROM rejected WHERE source = 'wiktionary' "
+                                "AND word = ? ORDER BY position", (word,)
+                            )],
+                            "generated_ipas": normalized, "reasons": reasons,
+                            "transformations": transformations,
+                            "policy_version": POLICY_VERSION,
+                        })
+
+                    wiktionary_ipas = [row[0] for row in staging.execute(
+                        "SELECT ipa FROM pronunciations WHERE source = 'wiktionary' "
+                        "AND word = ? ORDER BY position", (word,)
                     )]
-                    write_json_line(changes, {
-                        "source": "wiktionary", "word": word,
-                        "action": "regenerated_with_espeak" if valid else "regeneration_failed",
-                        "original_ipas": [row[0] for row in staging.execute(
-                            "SELECT DISTINCT ipa FROM rejected WHERE source = 'wiktionary' "
-                            "AND word = ? ORDER BY position", (word,)
-                        )],
-                        "generated_ipas": valid, "reasons": reasons,
-                        "transformations": transformations,
-                        "policy_version": POLICY_VERSION,
-                    })
+                    for wiktionary_ipa in wiktionary_ipas:
+                        if not normalized:
+                            write_json_line(comparisons, {
+                                "word": word, "wiktionary_ipa": wiktionary_ipa,
+                                "espeak_ipa": raw_ipa,
+                                "action": "comparison_unavailable",
+                                "validation_reasons": [item["reason"] for item in rejected],
+                                "policy_version": POLICY_VERSION,
+                            })
+                            counts["comparison_unavailable_variants"] += 1
+                            continue
+                        espeak_ipa, comparison = min(
+                            ((candidate, compare_pronunciations(wiktionary_ipa, candidate, lang_code))
+                             for candidate in normalized),
+                            key=lambda item: (item[1]["phoneme_distance_ratio"],
+                                              item[1]["phoneme_edits"]),
+                        )
+                        extreme = is_extreme_mismatch(comparison, extreme_distance)
+                        replace = extreme and replace_extreme_mismatches
+                        if replace:
+                            staging.execute(
+                                "DELETE FROM pronunciations WHERE source = 'wiktionary' "
+                                "AND word = ? AND ipa = ?", (word, wiktionary_ipa),
+                            )
+                            stage_ipa("espeak", word, espeak_ipa)
+                            counts["extreme_replaced_variants"] += 1
+                            write_json_line(changes, {
+                                "source": "wiktionary", "word": word,
+                                "action": "extreme_mismatch_replaced_with_espeak",
+                                "original_ipa": wiktionary_ipa,
+                                "generated_ipa": espeak_ipa,
+                                "phoneme_edits": comparison["phoneme_edits"],
+                                "phoneme_distance_ratio": comparison["phoneme_distance_ratio"],
+                                "policy_version": POLICY_VERSION,
+                            })
+                        elif extreme:
+                            counts["extreme_review_variants"] += 1
+                        write_json_line(comparisons, {
+                            "word": word, "wiktionary_ipa": wiktionary_ipa,
+                            "espeak_ipa": espeak_ipa,
+                            "action": "replaced_with_espeak" if replace else "kept_wiktionary",
+                            "extreme_mismatch": extreme,
+                            "policy_version": POLICY_VERSION,
+                            **comparison,
+                        })
+                        counts["compared_variants"] += 1
+                    if wiktionary_ipas and replace_extreme_mismatches:
+                        staging.execute(
+                            "DELETE FROM words WHERE source = 'wiktionary' "
+                            "AND word = ? AND NOT EXISTS "
+                            "(SELECT 1 FROM pronunciations WHERE source = 'wiktionary' AND word = ?)",
+                            (word, word),
+                        )
                     processed += 1
                     progress.update(processed)
 
             try:
                 for (word,) in staging.execute(
-                    "SELECT word FROM regeneration ORDER BY position"
+                    "SELECT word FROM comparison_requests ORDER BY position"
                 ):
                     batch.append(word)
                     if len(batch) == batch_size:
-                        regenerate(batch)
+                        compare_batch(batch)
                         batch = []
                 if batch:
-                    regenerate(batch)
+                    compare_batch(batch)
             finally:
                 progress.finish()
 
@@ -505,6 +599,10 @@ def clean_ipa_wordlists(
             "policy_version": POLICY_VERSION, "language": lang_code,
             "inputs": {"wiktionary": str(wiki_input), "espeak": str(espeak_input)},
             "outputs": {"wiktionary": str(wiki_output), "espeak": str(espeak_output)},
+            "comparison_mode": "replace_extreme" if replace_extreme_mismatches else "report_only",
+            "extreme_distance": extreme_distance,
+            "minimum_extreme_edits": MIN_EXTREME_EDITS,
+            "minimum_extreme_phonemes": MIN_EXTREME_PHONEMES,
             "counts": dict(sorted(counts.items())),
             "rejection_reasons": dict(sorted(rejection_reasons.items())),
             "transformation_reasons": dict(sorted(transformation_reasons.items())),
@@ -532,12 +630,18 @@ def main() -> None:
     parser.add_argument("--lang-code", choices=LANGUAGES, required=True)
     parser.add_argument("--espeak", default="espeak-ng")
     parser.add_argument("--batch-size", type=int, default=1000)
+    parser.add_argument("--extreme-distance", type=float,
+                        default=DEFAULT_EXTREME_DISTANCE,
+                        help="review threshold for normalized phoneme distance (default: 0.8)")
+    parser.add_argument("--replace-extreme-mismatches", action="store_true",
+                        help="move extreme Wiktionary variants to eSpeak output; default is report only")
     args = parser.parse_args()
     try:
         executable = resolve_espeak(args.espeak)
         report = clean_ipa_wordlists(
             args.wiktionary_input, args.espeak_input, args.wiktionary_output,
             args.espeak_output, args.lang_code, executable, args.batch_size,
+            args.replace_extreme_mismatches, args.extreme_distance,
         )
     except (FileNotFoundError, OSError, sqlite3.Error, UnicodeError, ValueError,
             RuntimeError) as error:
@@ -547,6 +651,9 @@ def main() -> None:
     print(f"IPA cleanup policy   : {POLICY_VERSION}")
     print(f"Regeneration requests: {counts.get('regeneration_requested_words', 0):,}")
     print(f"Regenerated words    : {counts.get('regenerated_words', 0):,}")
+    print(f"Compared IPA variants: {counts.get('compared_variants', 0):,}")
+    print(f"Extreme review flags : {counts.get('extreme_review_variants', 0):,}")
+    print(f"Extreme replacements: {counts.get('extreme_replaced_variants', 0):,}")
     print(f"Wiktionary output    : {args.wiktionary_output}")
     print(f"eSpeak output        : {args.espeak_output}")
 
