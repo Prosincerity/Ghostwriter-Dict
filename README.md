@@ -169,7 +169,8 @@ IPA arrays. Both word stages write rejection groups, normalization logs, and
 counts under `out/<lang>/reports/`.
 
 The IPA stage expands supported alternatives and optional groups. It rejects
-malformed notation, unknown tokens, and values without a phoneme. Each
+malformed notation, unknown tokens, values without a phoneme, and dash marked
+IPA fragments such as `/-ˌmeːsɪç/` or `[ˈfʊɐ̯-]`. Each
 Wiktionary IPA variant is checked independently. A malformed variant or one
 without `ˈ` or `ˌ` is regenerated with eSpeak NG. Valid Wiktionary siblings
 stay in the Wiktionary list; successful replacements go to the eSpeak eligible

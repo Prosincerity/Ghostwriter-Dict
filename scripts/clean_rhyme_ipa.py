@@ -21,6 +21,7 @@ from generate_rhyme_db import (
 
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
+FRAGMENT_DASHES = frozenset("-‐‑‒–—―−\u00ad")
 DEFAULT_EXTREME_DISTANCE = 0.8
 MIN_EXTREME_EDITS = 4
 MIN_EXTREME_PHONEMES = 5
@@ -150,6 +151,9 @@ def clean_pronunciation(
             reason = "empty_pronunciation"
         elif not validate_delimiters(candidate):
             reason = "invalid_delimiters"
+        elif any(character in FRAGMENT_DASHES for character in candidate):
+            reason = "incomplete_pronunciation"
+            details["characters"] = sorted(set(candidate) & FRAGMENT_DASHES)
         elif re.search(r"[A-Z]", candidate):
             reason = "mixed_uppercase_notation"
         elif any(character in candidate for character in "αε"):
