@@ -8,7 +8,6 @@ report matches. Otherwise it replaces the output atomically. Output rows use
 """
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -17,6 +16,8 @@ import sys
 import unicodedata
 from pathlib import Path
 from typing import Iterable, TextIO
+
+from build_reports import archive_sources, sha256_file, write_json
 
 
 DEFAULT_LANGUAGES = ("en", "de", "tr")
@@ -107,28 +108,6 @@ def validate_input(path: Path) -> int:
                 raise ValueError(f"{path}:{line_number}: word contains a tab")
             word_count += 1
     return word_count
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def archive_sources(paths: list[Path]) -> list[dict[str, object]]:
-    sources = []
-    for path in paths:
-        metadata = path.stat()
-        etag_path = Path(f"{path}.etag")
-        sources.append({
-            "file": str(path.resolve()),
-            "etag": etag_path.read_text(encoding="utf-8").strip() if etag_path.is_file() else None,
-            "size_bytes": metadata.st_size,
-            "modified_ns": metadata.st_mtime_ns,
-        })
-    return sources
 
 
 def iter_word_batches(source: Iterable[str], batch_size: int) -> Iterable[list[str]]:
@@ -255,7 +234,7 @@ def process_language(
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
 
-    report_path = language_outdir / "reports" / f"wordlist_{lang_code}_espeak_ipa_source.json"
+    report_path = language_outdir / "reports" / "ipa_generation" / f"wordlist_{lang_code}_espeak_ipa_source.json"
     report_part = report_path.with_name(f"{report_path.name}.part")
     input_hash = sha256_file(input_path)
     source_archives = sources if sources is not None else []
@@ -263,6 +242,7 @@ def process_language(
         "input_wordlist": str(input_path.resolve()),
         "input_sha256": input_hash,
         "source_archives": source_archives,
+        "generator_sha256": sha256_file(Path(__file__)),
     }
     if output_path.is_file() and report_path.is_file():
         try:
@@ -276,6 +256,9 @@ def process_language(
             and report.get("output_sha256") == sha256_file(output_path)
         ):
             print(f"Reusing {lang_code} eSpeak IPA: {output_path}")
+            write_json(language_outdir / "reports" / "ipa_generation" / "report.json", {
+                **report, "status": "reused",
+            })
             return
 
     word_count = validate_input(input_path)
@@ -304,6 +287,9 @@ def process_language(
     except BaseException:
         report_part.unlink(missing_ok=True)
         raise
+    write_json(language_outdir / "reports" / "ipa_generation" / "report.json", {
+        **report, "status": "generated",
+    })
     print(f"  Generated : {generated:,}")
     print(f"  Empty IPA : {empty:,}")
     print(f"  Output    : {output_path}")

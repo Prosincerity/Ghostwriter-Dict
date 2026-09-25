@@ -92,6 +92,7 @@ download() {
     local url="$1"
     local destination="$2"
     local release_date_variable="$3"
+    local status_variable="$4"
     local etag_file="${destination}.etag"
     local headers
     local remote_etag
@@ -137,6 +138,7 @@ download() {
 
     if [[ -s "$destination" && -n "$remote_etag" && "$saved_etag" == "$remote_etag" ]]; then
         echo "Up to date: $(basename -- "$destination") ($remote_etag)"
+        printf -v "$status_variable" '%s' 'reused'
         return 0
     fi
 
@@ -173,17 +175,21 @@ download() {
     printf '%s\n' "$downloaded_etag" > "$etag_file.new"
     mv -- "$etag_file.new" "$etag_file"
     rm -f -- "$etag_file.part"
+    printf -v "$status_variable" '%s' 'downloaded'
 }
 
 if [[ "$SKIP_DOWNLOAD" == false ]]; then
     EN_RELEASE_DATE=""
-    download "$DE_URL" "$DE_ARCHIVE" ""
-    download "$TR_URL" "$TR_ARCHIVE" ""
-    download "$EN_URL" "$EN_ARCHIVE" EN_RELEASE_DATE
+    download "$DE_URL" "$DE_ARCHIVE" "" DE_DOWNLOAD_STATUS
+    download "$TR_URL" "$TR_ARCHIVE" "" TR_DOWNLOAD_STATUS
+    download "$EN_URL" "$EN_ARCHIVE" EN_RELEASE_DATE EN_DOWNLOAD_STATUS
     if [[ -z "$RELEASE_VERSION" ]]; then
         RELEASE_VERSION="kaikki-v${EN_RELEASE_DATE}"
     fi
 else
+    DE_DOWNLOAD_STATUS=skipped
+    TR_DOWNLOAD_STATUS=skipped
+    EN_DOWNLOAD_STATUS=skipped
     for archive in "$DE_ARCHIVE" "$TR_ARCHIVE" "$EN_ARCHIVE"; do
         if [[ ! -s "$archive" ]]; then
             echo "error: missing local archive: $archive" >&2
@@ -193,6 +199,11 @@ else
 fi
 
 echo "Kaikki release: $RELEASE_VERSION"
+python3 "$SCRIPT_DIR/build_reports.py" downloading --outdir "$OUT_DIR" \
+    --release-version "$RELEASE_VERSION" \
+    --archive "$DE_ARCHIVE" --archive "$TR_ARCHIVE" --archive "$EN_ARCHIVE" \
+    --status "de=$DE_DOWNLOAD_STATUS" --status "tr=$TR_DOWNLOAD_STATUS" \
+    --status "en=$EN_DOWNLOAD_STATUS"
 
 IPA_OPTIONS=()
 if [[ "$REPLACE_EXTREME_MISMATCHES" == true ]]; then
@@ -210,6 +221,7 @@ python3 "$SCRIPT_DIR/extract_ipa.py" \
     --lang-code en \
     --lang-code de \
     --lang-code tr \
+    --reuse-if-current \
     --outdir "$OUT_DIR"
 
 echo "Generating eSpeak IPA for words without Wiktionary IPA..."
@@ -240,6 +252,11 @@ for lang_code in en de tr; do
         "$language_dir/wordlist_${lang_code}_espeak_rhyme_eligible.txt" \
         --lang-code "$lang_code" \
         "${IPA_OPTIONS[@]}"
+
+    python3 "$SCRIPT_DIR/build_reports.py" cleaning --outdir "$OUT_DIR" \
+        --release-version "$RELEASE_VERSION" --lang-code "$lang_code" \
+        --comparison-mode "$(if [[ "$REPLACE_EXTREME_MISMATCHES" == true ]]; then echo replace_extreme; else echo report_only; fi)" \
+        --extreme-distance "${EXTREME_DISTANCE:-0.8}"
 
     echo "Building $lang_code Wiktionary database..."
     python3 "$SCRIPT_DIR/generate_rhyme_db.py" \

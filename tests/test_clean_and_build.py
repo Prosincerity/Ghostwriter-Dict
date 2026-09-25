@@ -56,7 +56,7 @@ class CleanAndBuildTest(unittest.TestCase):
             )
 
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 15)
+            self.assertEqual(len(calls), 18)
             self.assertEqual(
                 sum("clean_rhyme_words.py" in call for call in calls), 6
             )

@@ -146,10 +146,10 @@ class CleanupHelperTest(unittest.TestCase):
 
         self.assertEqual(paths["wordlist"], output)
         for name in ("rejected_words", "word_changes", "report"):
-            self.assertEqual(paths[name].parent, output.parent / "reports")
+            self.assertEqual(paths[name].parent, output.parent / "reports" / "cleaning")
         ipa_paths = IPA.output_paths(output, output.parent / "espeak.txt")
         for name in ("rejected", "changes", "report"):
-            self.assertEqual(ipa_paths[name].parent, output.parent / "reports")
+            self.assertEqual(ipa_paths[name].parent, output.parent / "reports" / "cleaning")
 
     def test_headword_normalization_reports_each_transformation_once(self):
         normalized, transformations = WORDS.normalize_headword(

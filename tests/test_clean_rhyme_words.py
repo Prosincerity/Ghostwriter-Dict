@@ -30,7 +30,7 @@ class WordCleanupTest(unittest.TestCase):
                 output.read_text(encoding="utf-8"),
                 'can\'t\t["/kænt/"," /broken…/ ","/kɑnt/"]\n',
             )
-            reports = root / "reports"
+            reports = root / "reports" / "cleaning"
             changes = [json.loads(line) for line in
                        (reports / "cleaned_word_changes.jsonl").read_text(encoding="utf-8").splitlines()]
             self.assertEqual(changes[0]["original_word"], "can’t")

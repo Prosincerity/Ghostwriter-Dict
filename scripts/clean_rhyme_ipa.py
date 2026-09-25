@@ -293,7 +293,7 @@ class ProgressBar:
 
 
 def output_paths(wiki_output: Path, espeak_output: Path) -> dict[str, Path]:
-    reports_dir = wiki_output.parent / "reports"
+    reports_dir = wiki_output.parent / "reports" / "cleaning"
     stem = wiki_output.stem
     return {
         "wiktionary": wiki_output,

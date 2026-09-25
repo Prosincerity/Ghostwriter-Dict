@@ -17,7 +17,7 @@ outputs are replaced atomically through `.part` files.
 
 ## Build workflows
 
-### Complete rebuild
+### Complete build
 
 Download or update the archives, extract canonical lists, generate missing IPA,
 apply product cleanup, build all six databases, and package their gzip release
@@ -38,7 +38,11 @@ release explicitly:
 ```
 
 Use `--release-version` without `--skip-download` to override the derived
-release. Run the script with `--help` for all options.
+release. On later runs, extraction reuses its wordlists when all archive
+fingerprints, extractor code, options, and output checksums match. eSpeak
+generation likewise checks its input, archives, generator code, and output.
+The script still checks remote ETags when downloading is enabled. Run the
+script with `--help` for all options.
 
 ### Cleanup and database rebuild only
 
@@ -96,13 +100,16 @@ Each language directory contains:
 | `wordlist_<lang>_ipa.txt` | Canonical Wiktionary pronunciations |
 | `wordlist_<lang>_noipa.txt` | Words lacking usable Wiktionary IPA |
 | `wordlist_<lang>_espeak_ipa.txt` | Generated eSpeak pronunciations |
-| `reports/wordlist_<lang>_espeak_ipa_source.json` | Sources and fingerprints used for eSpeak generation |
+| `reports/downloading/report.json` | Archive fingerprints and per-edition download status |
+| `reports/reading/report.json` | Extraction counts, source and code fingerprints, output checksums |
+| `reports/ipa_generation/report.json` | eSpeak sources, code fingerprint, counts, and reuse status |
+| `reports/cleaning/` | Word and IPA cleanup reports, changes, grouped rejections, and stage summary |
+| `reports/ipa_generation/wordlist_<lang>_espeak_ipa_source.json` | Source report used for eSpeak reuse |
 | `wordlist_<lang>_wiktionary_words_cleaned.txt` | Word-filtered Wiktionary input for IPA validation |
 | `wordlist_<lang>_espeak_words_cleaned.txt` | Word-filtered eSpeak input for IPA validation |
 | `wordlist_<lang>_rhyme_eligible.txt` | Cleaned Wiktionary input for SQLite |
 | `wordlist_<lang>_espeak_rhyme_eligible.txt` | Cleaned eSpeak input for SQLite |
-| `reports/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | Extreme mismatches and comparisons with phoneme distance ratio above 0.5 |
-| `reports/` | Cleanup counts, changes, and grouped rejections |
+| `reports/cleaning/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | Extreme mismatches and comparisons with phoneme distance ratio above 0.5 |
 | `*.db` | Finished versioned rhyme indexes |
 | `*.db.gz` | Compressed release assets from the complete rebuild or packaging command |
 
@@ -138,8 +145,8 @@ emoji for auditing. The product cleanup stage applies the stricter filter.
 Words without usable Wiktionary IPA are sent to their matching eSpeak NG
 voice. Adaptive batch isolation prevents entries that produce multiple output
 lines from shifting later pronunciations. The full build records all three
-downloaded archives and each language's no-IPA input fingerprint in
-`out/<lang>/reports/wordlist_<lang>_espeak_ipa_source.json`. On later runs,
+downloaded archives, generator code, and each language's no-IPA input fingerprint in
+`out/<lang>/reports/ipa_generation/wordlist_<lang>_espeak_ipa_source.json`. On later runs,
 it reuses the generated eSpeak list when the source report and output still
 match; a changed download or missing output triggers generation.
 
@@ -166,7 +173,7 @@ apostrophes, Unicode dashes, subscript digits, and soft hyphens before validatio
 
 The word stage only filters and normalizes headwords; it does not change their
 IPA arrays. Both word stages write rejection groups, normalization logs, and
-counts under `out/<lang>/reports/`.
+counts under `out/<lang>/reports/cleaning/`.
 
 The IPA stage expands supported alternatives and optional groups. It rejects
 malformed notation, unknown tokens, values without a phoneme, and dash marked

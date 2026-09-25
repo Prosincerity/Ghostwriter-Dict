@@ -81,7 +81,7 @@ class ProgressBar:
 
 
 def output_paths(output_path: Path) -> dict[str, Path]:
-    reports_dir = output_path.parent / "reports"
+    reports_dir = output_path.parent / "reports" / "cleaning"
     stem = output_path.stem
     return {
         "wordlist": output_path,
