@@ -209,7 +209,10 @@ python3 "$SCRIPT_DIR/extract_ipa.py" \
     --outdir "$OUT_DIR"
 
 echo "Generating eSpeak IPA for words without Wiktionary IPA..."
-python3 "$SCRIPT_DIR/generate_espeak_ipa.py" --outdir "$OUT_DIR"
+python3 "$SCRIPT_DIR/generate_espeak_ipa.py" --outdir "$OUT_DIR" \
+    --source-archive "$DE_ARCHIVE" \
+    --source-archive "$TR_ARCHIVE" \
+    --source-archive "$EN_ARCHIVE"
 
 for lang_code in en de tr; do
     language_dir="$OUT_DIR/$lang_code"

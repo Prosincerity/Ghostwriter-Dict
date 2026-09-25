@@ -94,6 +94,9 @@ class DownloadAndProcessTest(unittest.TestCase):
             self.assertEqual(len(calls), 18)
             self.assertIn("extract_ipa.py", calls[0])
             self.assertIn("generate_espeak_ipa.py", calls[1])
+            for archive in ("de-extract.jsonl.gz", "tr-extract.jsonl.gz",
+                            "raw-wiktextract-data.jsonl.gz"):
+                self.assertIn(f"--source-archive {root / 'raw' / archive}", calls[1])
             self.assertEqual(sum("clean_rhyme_words.py" in call for call in calls), 6)
             self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
             self.assertEqual(

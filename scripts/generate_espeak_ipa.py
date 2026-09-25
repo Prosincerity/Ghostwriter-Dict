@@ -2,11 +2,13 @@
 """Generate IPA for no-IPA wordlists by calling eSpeak NG in batches.
 
 For every selected language this reads ``<lang>/wordlist_<lang>_noipa.txt`` and
-atomically overwrites ``<lang>/wordlist_<lang>_espeak_ipa.txt`` below the
-output folder. Output rows use ``word<TAB>["ipa"]``.
+reuses an existing ``<lang>/wordlist_<lang>_espeak_ipa.txt`` when its source
+report matches. Otherwise it replaces the output atomically. Output rows use
+``word<TAB>["ipa"]``.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -74,6 +76,10 @@ def parse_args() -> argparse.Namespace:
         default=10_000,
         help="words sent to each eSpeak NG process (default: 10000)",
     )
+    parser.add_argument(
+        "--source-archive", action="append", type=Path, default=[],
+        help="downloaded Wiktionary archive used to build the no-IPA lists; repeat for each edition",
+    )
     args = parser.parse_args()
     if args.batch_size < 1:
         parser.error("--batch-size must be at least 1")
@@ -101,6 +107,28 @@ def validate_input(path: Path) -> int:
                 raise ValueError(f"{path}:{line_number}: word contains a tab")
             word_count += 1
     return word_count
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def archive_sources(paths: list[Path]) -> list[dict[str, object]]:
+    sources = []
+    for path in paths:
+        metadata = path.stat()
+        etag_path = Path(f"{path}.etag")
+        sources.append({
+            "file": str(path.resolve()),
+            "etag": etag_path.read_text(encoding="utf-8").strip() if etag_path.is_file() else None,
+            "size_bytes": metadata.st_size,
+            "modified_ns": metadata.st_mtime_ns,
+        })
+    return sources
 
 
 def iter_word_batches(source: Iterable[str], batch_size: int) -> Iterable[list[str]]:
@@ -218,13 +246,37 @@ def write_batch(
 
 
 def process_language(
-    executable: str, outdir: Path, lang_code: str, batch_size: int
+    executable: str, outdir: Path, lang_code: str, batch_size: int,
+    sources: list[dict[str, object]] | None = None,
 ) -> None:
     language_outdir = outdir / lang_code
     input_path = language_outdir / f"wordlist_{lang_code}_noipa.txt"
     output_path = language_outdir / f"wordlist_{lang_code}_espeak_ipa.txt"
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
+
+    report_path = language_outdir / "reports" / f"wordlist_{lang_code}_espeak_ipa_source.json"
+    report_part = report_path.with_name(f"{report_path.name}.part")
+    input_hash = sha256_file(input_path)
+    source_archives = sources if sources is not None else []
+    expected_source = {
+        "input_wordlist": str(input_path.resolve()),
+        "input_sha256": input_hash,
+        "source_archives": source_archives,
+    }
+    if output_path.is_file() and report_path.is_file():
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            report = None
+        if (
+            isinstance(report, dict)
+            and all(report.get(key) == value for key, value in expected_source.items())
+            and report.get("output_wordlist") == str(output_path.resolve())
+            and report.get("output_sha256") == sha256_file(output_path)
+        ):
+            print(f"Reusing {lang_code} eSpeak IPA: {output_path}")
+            return
 
     word_count = validate_input(input_path)
     print(f"Generating {lang_code} IPA for {word_count:,} words...")
@@ -236,6 +288,22 @@ def process_language(
         batch_size,
         word_count,
     )
+    report = {
+        **expected_source,
+        "output_wordlist": str(output_path.resolve()),
+        "output_sha256": sha256_file(output_path),
+        "generated_words": generated,
+        "empty_ipa_words": empty,
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with report_part.open("w", encoding="utf-8", newline="\n") as destination:
+            json.dump(report, destination, ensure_ascii=False, indent=2, sort_keys=True)
+            destination.write("\n")
+        os.replace(report_part, report_path)
+    except BaseException:
+        report_part.unlink(missing_ok=True)
+        raise
     print(f"  Generated : {generated:,}")
     print(f"  Empty IPA : {empty:,}")
     print(f"  Output    : {output_path}")
@@ -243,13 +311,15 @@ def process_language(
 
 def main() -> None:
     args = parse_args()
-    executable = resolve_espeak(args.espeak)
     args.outdir.mkdir(parents=True, exist_ok=True)
     lang_codes = tuple(dict.fromkeys(args.lang_codes or DEFAULT_LANGUAGES))
 
     try:
+        sources = archive_sources(args.source_archive)
         for lang_code in lang_codes:
-            process_language(executable, args.outdir, lang_code, args.batch_size)
+            process_language(
+                args.espeak, args.outdir, lang_code, args.batch_size, sources,
+            )
     except (FileNotFoundError, OSError, RuntimeError, UnicodeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from error
