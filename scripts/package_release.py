@@ -22,6 +22,19 @@ def staged_file(destination: Path) -> Path:
     return Path(name)
 
 
+def backup_existing(destination: Path) -> Path | None:
+    if not destination.exists():
+        return None
+    backup = staged_file(destination)
+    backup.unlink()
+    try:
+        os.link(destination, backup)
+    except BaseException:
+        backup.unlink(missing_ok=True)
+        raise
+    return backup
+
+
 def compress_database(database: Path, index: int, total: int) -> tuple[Path, Path, str]:
     archive = database.with_name(f"{database.name}.gz")
     archive_part = staged_file(archive)
@@ -77,6 +90,8 @@ def main() -> None:
     manifest = PROJECT_DIR / "out" / "SHA256SUMS"
     staged = []
     manifest_part = None
+    backups: dict[Path, Path | None] = {}
+    published: list[Path] = []
     try:
         for index, database in enumerate(sorted(databases), 1):
             print(
@@ -94,14 +109,31 @@ def main() -> None:
             ),
             encoding="ascii",
         )
-        for archive_part, archive, _ in staged:
-            os.replace(archive_part, archive)
-        os.replace(manifest_part, manifest)
+        for _, archive, _ in staged:
+            backups[archive] = backup_existing(archive)
+        backups[manifest] = backup_existing(manifest)
+        try:
+            for archive_part, archive, _ in staged:
+                os.replace(archive_part, archive)
+                published.append(archive)
+            os.replace(manifest_part, manifest)
+            published.append(manifest)
+        except BaseException:
+            for destination in reversed(published):
+                backup = backups[destination]
+                if backup is None:
+                    destination.unlink(missing_ok=True)
+                else:
+                    os.replace(backup, destination)
+            raise
     finally:
         for archive_part, _, _ in staged:
             archive_part.unlink(missing_ok=True)
         if manifest_part is not None:
             manifest_part.unlink(missing_ok=True)
+        for backup in backups.values():
+            if backup is not None:
+                backup.unlink(missing_ok=True)
     print(f"\rPackaged {len(databases)} archives; checksums: {manifest}", file=sys.stderr)
 
 
