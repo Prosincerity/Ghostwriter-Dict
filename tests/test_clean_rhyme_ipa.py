@@ -54,18 +54,19 @@ class IpaRegenerationTest(unittest.TestCase):
                 'wrong\t["/bad…/"]\n', encoding="utf-8",
             )
             espeak_input.write_text('other\t["ˈʌðɚ"]\n', encoding="utf-8")
-            with mock.patch.object(IPA, "call_espeak", return_value=["ˈkæt", "ˈɹɔŋ"]) as call:
+            with mock.patch.object(IPA, "call_espeak", return_value=["ˈkæt", "ˈdɔɡ", "ˈɹɔŋ"]) as call:
                 report = IPA.clean_ipa_wordlists(
                     wiki_input, espeak_input, wiki_output, espeak_output,
                     "en", "fake-espeak", batch_size=10,
                 )
-            call.assert_called_once_with("fake-espeak", "en", ["cat", "wrong"])
+            call.assert_called_once_with("fake-espeak", "en", ["cat", "dog", "wrong"])
             self.assertEqual(rows(wiki_output), {"cat": ["/ˈkæt/"], "dog": ["/ˈdɔɡ/"]})
             self.assertEqual(rows(espeak_output), {
                 "other": ["ˈʌðɚ"], "cat": ["ˈkæt"], "wrong": ["ˈɹɔŋ"],
             })
             self.assertEqual(report["counts"]["regeneration_requested_words"], 2)
             self.assertEqual(report["counts"]["regenerated_words"], 2)
+            self.assertEqual(report["counts"]["compared_variants"], 2)
             paths = IPA.output_paths(wiki_output, espeak_output)
             rejected = json.loads(paths["rejected"].read_text(encoding="utf-8"))
             self.assertEqual(
@@ -78,19 +79,61 @@ class IpaRegenerationTest(unittest.TestCase):
             self.assertTrue(all(row["policy_version"] == IPA.POLICY_VERSION for row in regenerated))
             self.assertEqual(list(root.rglob("*.part")), [])
 
-    def test_no_regeneration_when_all_wiktionary_ipa_are_valid(self):
+    def test_valid_wiktionary_ipa_is_compared_without_regeneration(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             wiki_input = root / "wiki.txt"
             espeak_input = root / "espeak.txt"
             wiki_input.write_text('cat\t["/ˈkæt/"]\n', encoding="utf-8")
             espeak_input.write_text('other\t["ˈʌðɚ"]\n', encoding="utf-8")
-            with mock.patch.object(IPA, "call_espeak") as call:
-                IPA.clean_ipa_wordlists(
+            with mock.patch.object(IPA, "call_espeak", return_value=["ˈkæt"]) as call:
+                report = IPA.clean_ipa_wordlists(
                     wiki_input, espeak_input, root / "wiki_out.txt",
                     root / "espeak_out.txt", "en", "fake",
                 )
-            call.assert_not_called()
+            call.assert_called_once_with("fake", "en", ["cat"])
+            self.assertEqual(report["counts"]["regeneration_requested_words"], 0)
+            self.assertEqual(rows(root / "wiki_out.txt"), {"cat": ["/ˈkæt/"]})
+            self.assertEqual(rows(root / "espeak_out.txt"), {"other": ["ˈʌðɚ"]})
+
+    def test_extreme_comparison_reports_first_and_opt_in_moves_only_bad_variant(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            wiki_input = root / "wiki.txt"
+            espeak_input = root / "espeak.txt"
+            wiki_output = root / "wiki_out.txt"
+            espeak_output = root / "espeak_out.txt"
+            wiki_input.write_text(
+                'catapult\t["/ˈkætəpʌlt/","/ˈʃuːɡɛlmə/"]\n',
+                encoding="utf-8",
+            )
+            espeak_input.write_text("", encoding="utf-8")
+            with mock.patch.object(IPA, "call_espeak", return_value=["ˈʃuːɡɛlmə"]) as call:
+                report = IPA.clean_ipa_wordlists(
+                    wiki_input, espeak_input, wiki_output, espeak_output,
+                    "en", "fake",
+                )
+            call.assert_called_once_with("fake", "en", ["catapult"])
+            self.assertEqual(report["comparison_mode"], "report_only")
+            self.assertEqual(report["counts"]["extreme_review_variants"], 1)
+            self.assertEqual(rows(wiki_output)["catapult"],
+                             ["/ˈkætəpʌlt/", "/ˈʃuːɡɛlmə/"])
+            self.assertEqual(rows(espeak_output), {})
+            comparisons = [json.loads(line) for line in
+                           IPA.output_paths(wiki_output, espeak_output)["comparisons"]
+                           .read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(comparisons), 2)
+            self.assertEqual([row["extreme_mismatch"] for row in comparisons], [True, False])
+            self.assertTrue(all(row["action"] == "kept_wiktionary" for row in comparisons))
+
+            with mock.patch.object(IPA, "call_espeak", return_value=["ˈʃuːɡɛlmə"]):
+                report = IPA.clean_ipa_wordlists(
+                    wiki_input, espeak_input, wiki_output, espeak_output,
+                    "en", "fake", replace_extreme_mismatches=True,
+                )
+            self.assertEqual(report["counts"]["extreme_replaced_variants"], 1)
+            self.assertEqual(rows(wiki_output), {"catapult": ["/ˈʃuːɡɛlmə/"]})
+            self.assertEqual(rows(espeak_output), {"catapult": ["ˈʃuːɡɛlmə"]})
 
     def test_espeak_failure_preserves_previous_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:

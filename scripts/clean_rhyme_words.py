@@ -15,7 +15,7 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES
 
 
-POLICY_VERSION = "rhyme-cleanup-v12"
+POLICY_VERSION = "rhyme-cleanup-v13"
 BASE_HEADWORD_LETTERS = string.ascii_letters
 GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
 TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
