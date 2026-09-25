@@ -35,9 +35,10 @@ changes.
 
 Search every supplied Wiktionary edition for every requested language and
 route only by top-level `lang_code`. Normalize words and IPA to NFC before
-deduplication; capitalization remains significant. Read both `sounds[].ipa`
-and `sounds[].audio-ipa`, retaining distinct variants and rejecting only empty
-or complete placeholder values.
+deduplication. Lowercase headwords with fewer than two uppercase letters,
+merging their distinct IPA values; preserve spellings with two or more uppercase
+letters. Read both `sounds[].ipa` and `sounds[].audio-ipa`, retaining distinct
+variants and rejecting only empty or complete placeholder values.
 
 Canonical lists preserve slang, phrases, punctuation, digits, and emoji.
 `--latin-headwords-only` rejects non-Latin letters but is not the product

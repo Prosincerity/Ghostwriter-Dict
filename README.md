@@ -101,9 +101,12 @@ remain separate throughout the pipeline so their provenance stays visible.
 
 Every English, German, and Turkish Wiktionary edition is searched for all
 three target languages. Entries are routed only by top-level `lang_code`, then
-normalized to Unicode NFC and deduplicated. The extractor reads both
-`sounds[].ipa` and `sounds[].audio-ipa`, removes complete placeholders, and
-keeps capitalization significant.
+normalized to Unicode NFC and deduplicated. Headwords with fewer than two
+uppercase letters are lowercased before merging; words with two or more
+uppercase letters, such as `ABD`, retain their spelling. For example, `Cat`
+and `cat` become one `cat` row containing their distinct IPA values. The
+extractor reads both `sounds[].ipa` and `sounds[].audio-ipa` and removes
+complete placeholders.
 
 Canonical lists intentionally retain phrases, slang, punctuation, digits, and
 emoji for auditing. The product cleanup stage applies the stricter filter.

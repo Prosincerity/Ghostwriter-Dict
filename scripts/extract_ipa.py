@@ -113,6 +113,14 @@ def contains_non_latin_letter(value: str) -> bool:
     return False
 
 
+def normalize_word(word: str) -> str:
+    """Lowercase ordinary headwords while retaining multi-capital spellings."""
+    word = unicodedata.normalize("NFC", word)
+    if sum(character.isupper() for character in word) >= 2:
+        return word
+    return unicodedata.normalize("NFC", word.lower())
+
+
 def open_jsonl(path: Path) -> IO[str]:
     if path.name.endswith(".gz"):
         return gzip.open(path, mode="rt", encoding="utf-8")
@@ -250,6 +258,7 @@ def main() -> None:
                 if args.latin_headwords_only and contains_non_latin_letter(word):
                     language.script_rejected += 1
                     continue
+                word = normalize_word(word)
 
                 language.words.setdefault(word, None)
 
