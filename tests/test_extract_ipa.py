@@ -75,6 +75,57 @@ class ExtractIpaTest(unittest.TestCase):
                 "",
             )
 
+    def test_invalid_utf8_record_is_counted_and_later_records_are_kept(self):
+        valid = json.dumps(
+            {"word": "valid", "lang_code": "en", "sounds": [{"ipa": "/ˈvælɪd/"}]}
+        ).encode("utf-8")
+        for compressed in (False, True):
+            with self.subTest(compressed=compressed), tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                source = temp_path / ("entries.jsonl.gz" if compressed else "entries.jsonl")
+                payload = b'{"word":"bad\xff","lang_code":"en"}\n' + valid + b"\n"
+                if compressed:
+                    with gzip.open(source, "wb") as output:
+                        output.write(payload)
+                else:
+                    source.write_bytes(payload)
+                result = subprocess.run(
+                    [sys.executable, str(EXTRACTOR), str(source), "--lang-code", "en",
+                     "--outdir", str(temp_path / "out")],
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Bad JSON records      : 1", result.stdout)
+                self.assertEqual(
+                    (temp_path / "out" / "en" / "wordlist_en_ipa.txt").read_text(encoding="utf-8"),
+                    'valid\t["/ˈvælɪd/"]\n',
+                )
+
+    def test_json_surrogate_does_not_corrupt_output(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source = temp_path / "entries.jsonl"
+            source.write_text(
+                '{"word":"bad\\udcff","lang_code":"en"}\n'
+                '{"word":"missing","lang_code":"en","sounds":[{"ipa":"/a\\udcff/"}]}\n'
+                '{"word":"valid","lang_code":"en","sounds":[{"ipa":"/ˈvælɪd/"}]}\n',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(EXTRACTOR), str(source), "--lang-code", "en",
+                 "--outdir", str(temp_path / "out")],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (temp_path / "out" / "en" / "wordlist_en_ipa.txt").read_text(encoding="utf-8"),
+                'valid\t["/ˈvælɪd/"]\n',
+            )
+            self.assertEqual(
+                (temp_path / "out" / "en" / "wordlist_en_noipa.txt").read_text(encoding="utf-8"),
+                "missing\n",
+            )
+
     def test_merges_all_dumps_routes_languages_and_removes_duplicates(self):
         german_edition = [
             {

@@ -15,6 +15,7 @@ import argparse
 import gzip
 import json
 import os
+import re
 import sys
 import unicodedata
 from collections import OrderedDict
@@ -40,6 +41,8 @@ JUNK_IPA = {
     "[?]",
     "/?/",
 }
+INVALID_UTF8 = re.compile(r"[\udc80-\udcff]")
+INVALID_UNICODE = re.compile(r"[\ud800-\udfff]")
 
 
 @dataclass
@@ -88,6 +91,8 @@ class ProgressBar:
 def is_usable_ipa(value: object) -> bool:
     if not isinstance(value, str):
         return False
+    if INVALID_UNICODE.search(value):
+        return False
     return "".join(value.split()) not in JUNK_IPA
 
 
@@ -125,8 +130,8 @@ def normalize_word(word: str) -> str:
 
 def open_jsonl(path: Path) -> IO[str]:
     if path.name.endswith(".gz"):
-        return gzip.open(path, mode="rt", encoding="utf-8")
-    return path.open(mode="r", encoding="utf-8")
+        return gzip.open(path, mode="rt", encoding="utf-8", errors="surrogateescape")
+    return path.open(mode="r", encoding="utf-8", errors="surrogateescape")
 
 
 def input_position(source: IO[str], path: Path) -> int:
@@ -234,6 +239,9 @@ def main() -> None:
                         total_lines,
                         {code: len(languages[code].words) for code in lang_codes},
                     )
+                if INVALID_UTF8.search(line):
+                    bad_lines += 1
+                    continue
                 try:
                     obj = json.loads(line)
                 except (json.JSONDecodeError, UnicodeDecodeError):
@@ -254,6 +262,7 @@ def main() -> None:
                 if (
                     not isinstance(word, str)
                     or not word
+                    or INVALID_UNICODE.search(word)
                     or any(character in word for character in "\t\r\n")
                 ):
                     invalid_entries += 1

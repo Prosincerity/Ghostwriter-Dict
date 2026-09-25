@@ -1,11 +1,14 @@
 import gzip
 import hashlib
+import importlib.util
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "package_release.py"
@@ -13,6 +16,48 @@ RELEASE = "kaikki-v20260909"
 
 
 class PackageReleaseTest(unittest.TestCase):
+    def test_publish_failure_restores_old_archives_and_manifest(self):
+        spec = importlib.util.spec_from_file_location("package_release_test", SCRIPT)
+        assert spec is not None and spec.loader is not None
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            old_archives = {}
+            for lang in ("en", "de", "tr"):
+                directory = root / "out" / lang
+                directory.mkdir(parents=True)
+                for source in ("", "_espeak"):
+                    database = directory / f"{lang}{source}_{RELEASE}.db"
+                    database.write_bytes(f"new {lang}{source}".encode())
+                    archive = Path(f"{database}.gz")
+                    old_archives[archive] = f"old {lang}{source}".encode()
+                    archive.write_bytes(old_archives[archive])
+            manifest = root / "out" / "SHA256SUMS"
+            manifest.write_text("old manifest\n", encoding="ascii")
+            second_archive = sorted(old_archives)[1]
+            real_replace = os.replace
+            failed = False
+
+            def fail_second_publish(source, destination):
+                nonlocal failed
+                if Path(destination) == second_archive and not failed:
+                    failed = True
+                    raise OSError("publish failed")
+                return real_replace(source, destination)
+
+            with mock.patch.object(package, "PROJECT_DIR", root), \
+                 mock.patch.object(sys, "argv", [str(SCRIPT), "--release-version", RELEASE]), \
+                 mock.patch.object(package.os, "replace", side_effect=fail_second_publish):
+                with self.assertRaisesRegex(OSError, "publish failed"):
+                    package.main()
+
+            self.assertTrue(failed)
+            self.assertEqual(manifest.read_text(encoding="ascii"), "old manifest\n")
+            for archive, previous in old_archives.items():
+                self.assertEqual(archive.read_bytes(), previous)
+            self.assertEqual(list((root / "out").rglob("*.part")), [])
+
     def test_packages_six_databases_and_writes_matching_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

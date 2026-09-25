@@ -85,6 +85,8 @@ python3 scripts/package_release.py --release-version kaikki-v20260902
 This compresses at gzip level 9 and replaces `out/SHA256SUMS` with six
 `sha256sum`-compatible lines. Verify from `out/` with
 `sha256sum -c SHA256SUMS`.
+If publication fails, the packaging command restores the previous archives
+and checksum manifest.
 
 ## Generated artifacts
 
@@ -126,6 +128,8 @@ uppercase letters, such as `ABD`, retain their spelling. For example, `Cat`
 and `cat` become one `cat` row containing their distinct IPA values. The
 extractor reads both `sounds[].ipa` and `sounds[].audio-ipa` and removes
 complete placeholders, including empty IPA wrappers.
+Malformed UTF-8 records and JSON strings with invalid Unicode surrogates are
+skipped or treated as unusable IPA, so later valid records can still be read.
 
 Canonical lists intentionally retain phrases, slang, punctuation, digits, and
 emoji for auditing. The product cleanup stage applies the stricter filter.
