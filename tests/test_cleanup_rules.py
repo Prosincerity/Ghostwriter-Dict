@@ -26,7 +26,10 @@ class PronunciationCleanupTest(unittest.TestCase):
 
     def test_splits_expands_and_normalizes_supported_notation(self):
         self.assertEqual(self.clean("[æm] ~ [am]")[0], ["[æm]", "[am]"])
-        self.assertEqual(self.clean("[-ne ~ -nɛ]")[0], ["[-ne]", "[-nɛ]"])
+        valid, _, rejects = self.clean("[-ne ~ -nɛ]")
+        self.assertEqual(valid, [])
+        self.assertEqual([item["reason"] for item in rejects],
+                         ["incomplete_pronunciation"] * 2)
         self.assertEqual(self.clean("[dɔ(ː)ɡ]", "de")[0], ["[dɔɡ]", "[dɔːɡ]"])
         self.assertEqual(self.clean("/'ʃeɪk/")[0], ["/ˈʃeɪk/"])
         self.assertEqual(self.clean("[drɛ·sɑːʒ]")[0], ["[drɛ.sɑːʒ]"])
@@ -58,6 +61,25 @@ class PronunciationCleanupTest(unittest.TestCase):
         self.assertEqual(valid, [])
         self.assertEqual(rejects[0]["reason"], "unrecognized_tokens")
         self.assertEqual(rejects[0]["details"]["tokens"], {"_": 1})
+
+    def test_dashes_mark_incomplete_ipa_in_english_and_german(self):
+        examples = {
+            "de": [
+                "/-ˌmeːsɪç/", "/-ˌmɛːsɪk/", "/ʊnˈt͡seːm-/",
+                "/-ˌt͡sʏçtɪɡŋ̩/", "[ˈjɑɔ̯-]", "[ˈjɑɔ̯s-]",
+                "[-ˌvaɛ̯-]", "/-ˈneːɐ̯/", "[ˈfʊɐ̯-]",
+                "/-ˌt͡sʊx/", "[ˈfɛns.tɐ-]", "[ˈfɛɐ̯-]",
+            ],
+            "en": ["/-ˈkæt/", "/ˈkæt-/", "/ˈk-æt/", "/ˈkæt–/"],
+        }
+        for lang_code, ipas in examples.items():
+            for ipa in ipas:
+                with self.subTest(lang_code=lang_code, ipa=ipa):
+                    valid, _, rejects = self.clean(ipa, lang_code)
+                    self.assertEqual(valid, [])
+                    self.assertEqual(rejects[0]["reason"], "incomplete_pronunciation")
+                    self.assertEqual(rejects[0]["details"]["characters"],
+                                     ["–"] if "–" in ipa else ["-"])
 
     def test_rejects_pronunciations_with_only_prosody_markers(self):
         for ipa in ("/ˈ/", "[ˌ˥]", "↗"):

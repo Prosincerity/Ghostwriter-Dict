@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,8 @@ from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+from generate_rhyme_db import build_database
+
 SPEC = importlib.util.spec_from_file_location("clean_rhyme_ipa", SCRIPTS / "clean_rhyme_ipa.py")
 assert SPEC is not None and SPEC.loader is not None
 IPA = importlib.util.module_from_spec(SPEC)
@@ -44,6 +47,76 @@ class PhonemeComparisonTest(unittest.TestCase):
 
 
 class IpaRegenerationTest(unittest.TestCase):
+    def test_partial_ipa_regenerates_into_espeak_database(self):
+        examples = {
+            "de": {
+                "übermäßig": ["/-ˌmeːsɪç/", "/-ˌmɛːsɪk/"],
+                "unzähmbarkeit": ["/ʊnˈt͡seːm-/"],
+                "unzüchtigen": ["/-ˌt͡sʏçtɪɡŋ̩/"],
+                "jauserl": ["[ˈjɑɔ̯-]"],
+                "jausnen": ["[ˈjɑɔ̯s-]"],
+                "funktionsweise": ["[-ˌvaɛ̯-]"],
+                "funktionär": ["/-ˈneːɐ̯/"],
+                "furche": ["[ˈfʊɐ̯-]"],
+                "feldzug": ["/-ˌt͡sʊx/"],
+                "fenstersturz": ["[ˈfɛns.tɐ-]"],
+                "ferien": ["[ˈfɛɐ̯-]"],
+            },
+            "en": {
+                "catnip": ["/ˈkæt-/"],
+                "catalog": ["/-ˌkæt/"],
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for lang_code, words in examples.items():
+                with self.subTest(lang_code=lang_code):
+                    language_dir = root / lang_code
+                    language_dir.mkdir()
+                    wiki_input = language_dir / "wiki.txt"
+                    espeak_input = language_dir / "espeak.txt"
+                    wiki_output = language_dir / "wiki_eligible.txt"
+                    espeak_output = language_dir / "espeak_eligible.txt"
+                    wiki_input.write_text("".join(
+                        f"{word}\t{json.dumps(ipas, ensure_ascii=False)}\n"
+                        for word, ipas in words.items()
+                    ), encoding="utf-8")
+                    espeak_input.write_text("", encoding="utf-8")
+                    generated = "ˈhaːmɐ" if lang_code == "de" else "ˈkæt"
+                    with mock.patch.object(IPA, "call_espeak", return_value=[generated] * len(words)) as call:
+                        report = IPA.clean_ipa_wordlists(
+                            wiki_input, espeak_input, wiki_output, espeak_output,
+                            lang_code, "fake-espeak",
+                        )
+                    call.assert_called_once_with("fake-espeak", lang_code, list(words))
+                    self.assertEqual(rows(wiki_output), {})
+                    self.assertEqual(rows(espeak_output), {
+                        word: [generated] for word in words
+                    })
+                    self.assertEqual(report["counts"]["regenerated_words"], len(words))
+                    rejected = json.loads(IPA.output_paths(wiki_output, espeak_output)["rejected"]
+                                          .read_text(encoding="utf-8"))
+                    self.assertEqual(
+                        {entry["ipa"] for group in rejected["groups"] for entry in group["entries"]},
+                        {ipa for ipas in words.values() for ipa in ipas},
+                    )
+                    self.assertEqual({group["reason"] for group in rejected["groups"]},
+                                     {"incomplete_pronunciation"})
+                    for source, wordlist in (("kaikki", wiki_output), ("espeak", espeak_output)):
+                        database = language_dir / f"{lang_code}_{source}_kaikki-v20260925.db"
+                        build_database(wordlist, database, lang_code, "kaikki-v20260925")
+                        connection = sqlite3.connect(database)
+                        try:
+                            database_rows = connection.execute(
+                                "SELECT word, ipa FROM dictionary ORDER BY word"
+                            ).fetchall()
+                        finally:
+                            connection.close()
+                        expected = [] if source == "kaikki" else [
+                            (word, generated) for word in sorted(words)
+                        ]
+                        self.assertEqual(database_rows, expected)
+
     def test_keeps_valid_siblings_and_routes_only_replacements_to_espeak(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -52,7 +125,7 @@ class IpaRegenerationTest(unittest.TestCase):
             wiki_output = root / "wiki_eligible.txt"
             espeak_output = root / "espeak_eligible.txt"
             wiki_input.write_text(
-                'cat\t["/ˈkæt/","/kæt/","/bad…/"]\n'
+                'cat\t["/ˈkæt/","/kæt/","/bad…/","/ˈkæt-/"]\n'
                 'dog\t["/ˈdɔɡ/"]\n'
                 'wrong\t["/bad…/"]\n', encoding="utf-8",
             )

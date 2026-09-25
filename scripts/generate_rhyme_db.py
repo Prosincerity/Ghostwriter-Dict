@@ -25,7 +25,8 @@ from typing import Iterable, Optional, TextIO
 
 LANGUAGES = ("en", "de", "tr")
 STRESS_MARKERS = frozenset(("ˈ", "ˌ"))
-IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩⁽⁾|-‿⁀‖⫽︎")
+# A dash marks a pronunciation fragment and must remain an unknown token.
+IGNORED_SEPARATORS = frozenset(" ./[]()⟨⟩⁽⁾|‿⁀‖⫽︎")
 
 # These inventories are an audited representation of phonemes occurring in
 # the English, German, and Turkish Kaikki-derived wordlists, including common

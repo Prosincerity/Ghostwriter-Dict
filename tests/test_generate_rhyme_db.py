@@ -38,6 +38,14 @@ class PhonemeTokenizationTest(unittest.TestCase):
             ["t", "yː", "ɐ̯"],
         )
 
+    def test_dash_is_not_silently_discarded(self):
+        unknown = Counter()
+        self.assertEqual(
+            RHYME_DB.tokenize_ipa("/-ˌmeːsɪç/", "de", unknown),
+            ["-", "ˌ", "m", "eː", "s", "ɪ", "ç"],
+        )
+        self.assertEqual(unknown, Counter({"-": 1}))
+
     def test_turkish_affricate_and_long_vowel(self):
         self.assertEqual(
             RHYME_DB.tokenize_ipa("/t͡ʃoˈd͡ʒuːk/", "tr"),
