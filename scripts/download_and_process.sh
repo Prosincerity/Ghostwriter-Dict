@@ -205,7 +205,6 @@ python3 "$SCRIPT_DIR/extract_ipa.py" \
     --lang-code en \
     --lang-code de \
     --lang-code tr \
-    --latin-headwords-only \
     --outdir "$OUT_DIR"
 
 echo "Generating eSpeak IPA for words without Wiktionary IPA..."

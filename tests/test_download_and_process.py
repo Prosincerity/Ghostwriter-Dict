@@ -93,6 +93,7 @@ class DownloadAndProcessTest(unittest.TestCase):
             calls = call_log.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(calls), 18)
             self.assertIn("extract_ipa.py", calls[0])
+            self.assertNotIn("--latin-headwords-only", calls[0])
             self.assertIn("generate_espeak_ipa.py", calls[1])
             for archive in ("de-extract.jsonl.gz", "tr-extract.jsonl.gz",
                             "raw-wiktextract-data.jsonl.gz"):

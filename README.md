@@ -209,6 +209,8 @@ IPA is tokenized with a language-specific inventory before reversal.
 `ipa_reversed` concatenates all complete tokens in reverse order without
 whitespace. `assonance_reversed` contains only reversed vowel tokens and
 remains space-delimited.
+An unrecognized IPA token stops the database build and preserves the previous
+complete database; it is never written into a reversed index.
 
 For SQLite prefix queries, enable `PRAGMA case_sensitive_like = ON`. Rhyme
 prefixes are derived from `ipa_reversed`; no separate rhyme-key column is

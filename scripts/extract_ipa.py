@@ -191,7 +191,9 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="exact lang_code to keep; repeat for multiple languages",
     )
-    parser.add_argument("--outdir", type=Path, default=Path("."))
+    parser.add_argument(
+        "--outdir", type=Path, default=Path(__file__).resolve().parents[1] / "out"
+    )
     parser.add_argument(
         "--latin-headwords-only",
         action="store_true",
@@ -241,7 +243,7 @@ def main() -> None:
                     continue
 
                 lang_code = obj.get("lang_code")
-                if lang_code not in selected_languages:
+                if not isinstance(lang_code, str) or lang_code not in selected_languages:
                     continue
                 language = languages[lang_code]
                 language.matched += 1
