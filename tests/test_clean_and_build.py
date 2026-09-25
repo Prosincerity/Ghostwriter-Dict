@@ -48,7 +48,7 @@ class CleanAndBuildTest(unittest.TestCase):
             release = "kaikki-v20260909"
             result = subprocess.run(
                 [str(script), "--release-version", release,
-                 "--replace-extreme-mismatches", "--extreme-distance", "0.9"],
+                 "--extreme-distance", "0.9"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -71,6 +71,18 @@ class CleanAndBuildTest(unittest.TestCase):
                 all("generate_espeak_ipa.py" not in call for call in calls)
             )
             self.assertIn(f"for {release}", result.stdout)
+
+            call_log.write_text("", encoding="utf-8")
+            subprocess.run(
+                [str(script), "--release-version", release, "--report-only"],
+                check=True, capture_output=True, text=True, env=environment,
+            )
+            audit_calls = call_log.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in audit_calls), 3)
+            self.assertTrue(all(
+                "--replace-extreme-mismatches" not in call
+                for call in audit_calls if "clean_rhyme_ipa.py" in call
+            ))
 
     def test_requires_a_valid_release_version(self):
         missing = subprocess.run(
