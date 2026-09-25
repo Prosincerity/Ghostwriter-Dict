@@ -58,7 +58,7 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v12` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v13` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
 - All languages share the same curated Latin alphabet covering English,
@@ -79,6 +79,10 @@ separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 - Regenerate malformed and stressless Wiktionary IPA with eSpeak. Keep valid
   Wiktionary siblings in their source list and route regenerated IPA to the
   eSpeak list. Audit each rejected candidate and replacement.
+- Compare each valid Wiktionary IPA to one batched eSpeak result per word using
+  complete audited phoneme tokens. Record distance and stressed rhyme tails.
+  Default to report-only; moving extreme mismatches requires the explicit
+  opt-in flag and must preserve valid sibling pronunciations.
 
 Reports must retain policy version, counts, reasons, original/normalized
 values, rejected characters or tokens, and grouped readable rejection lists.

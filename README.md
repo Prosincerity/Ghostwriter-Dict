@@ -51,6 +51,17 @@ pronunciations:
   --release-version kaikki-v20260902
 ```
 
+Default cleanup compares valid Wiktionary IPA with eSpeak and writes an audit
+without changing those entries. After reviewing the comparison report, an
+explicit rebuild can move only extreme mismatches to the eSpeak output:
+
+```bash
+./scripts/clean_and_build.sh \
+  --release-version kaikki-v20260902 \
+  --replace-extreme-mismatches \
+  --extreme-distance 0.8
+```
+
 Both workflows produce:
 
 ```text
@@ -86,6 +97,7 @@ Each language directory contains:
 | `wordlist_<lang>_espeak_words_cleaned.txt` | Word-filtered eSpeak input for IPA validation |
 | `wordlist_<lang>_rhyme_eligible.txt` | Cleaned Wiktionary input for SQLite |
 | `wordlist_<lang>_espeak_rhyme_eligible.txt` | Cleaned eSpeak input for SQLite |
+| `reports/wordlist_<lang>_rhyme_eligible_ipa_comparisons.jsonl` | One audited eSpeak comparison per valid Wiktionary IPA |
 | `reports/` | Cleanup counts, changes, and grouped rejections |
 | `*.db` | Finished versioned rhyme indexes |
 
@@ -122,7 +134,7 @@ lines from shifting later pronunciations.
 
 ### Product cleanup
 
-Cleanup policy `rhyme-cleanup-v12` has separate word and IPA stages. Word
+Cleanup policy `rhyme-cleanup-v13` has separate word and IPA stages. Word
 cleanup uses one shared alphabet for all three languages. It includes curated
 English, German, Turkish, French, and common loanword letters, ASCII digits,
 and Hawaiian ʻokina (`U+02BB`).
@@ -151,7 +163,18 @@ without `ˈ` or `ˌ` is regenerated with eSpeak NG. Valid Wiktionary siblings
 stay in the Wiktionary list; successful replacements go to the eSpeak eligible
 list. Existing eSpeak IPA is validated but is not regenerated for missing
 stress. The IPA report records original values, reasons, generated values,
-and counts. This stage does not compare every valid Wiktionary IPA with eSpeak.
+and counts.
+
+The IPA stage also generates eSpeak IPA once per Wiktionary word and compares
+each valid variant using complete phoneme tokens from the audited language
+inventory. Its comparison report includes phoneme edit counts, distance
+normalized by the longer pronunciation, and stressed rhyme tails. The default
+is report-only. An extreme candidate requires at least five phonemes in each
+pronunciation, four phoneme edits, and a normalized distance of at least `0.8`.
+The threshold is provisional; review the report for each language before using
+`--replace-extreme-mismatches`. That option removes only flagged Wiktionary
+variants and puts the generated IPA in the eSpeak eligible list. Use
+`--extreme-distance` to set a reviewed threshold between zero and one.
 
 Cleanup never changes canonical files. Its reports include grouped word and
 IPA rejections, normalization logs, counts, reasons, and policy version.

@@ -57,6 +57,8 @@ This project modifies the source data by:
 - regenerating malformed or unstressed Wiktionary pronunciations with eSpeak NG
   and placing replacements in separately identified eSpeak lists while keeping
   valid Wiktionary variants;
+- auditing valid Wiktionary pronunciations against eSpeak-generated IPA and,
+  only when explicitly enabled, moving extreme mismatches to the eSpeak list;
 - deriving reversed IPA and vowel-only search values for rhyme indexes; and
 - optionally generating pronunciations for missing-IPA words with eSpeak NG,
   stored in separately identified `wordlist_<language>_espeak_ipa.txt` files.
