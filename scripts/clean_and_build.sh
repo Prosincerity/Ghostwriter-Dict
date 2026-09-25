@@ -117,6 +117,11 @@ for lang_code in en de tr; do
         --lang-code "$lang_code" \
         "${IPA_OPTIONS[@]}"
 
+    python3 "$SCRIPT_DIR/build_reports.py" cleaning --outdir "$OUT_DIR" \
+        --release-version "$RELEASE_VERSION" --lang-code "$lang_code" \
+        --comparison-mode "$(if [[ "$REPLACE_EXTREME_MISMATCHES" == true ]]; then echo replace_extreme; else echo report_only; fi)" \
+        --extreme-distance "${EXTREME_DISTANCE:-0.8}"
+
     echo "Building $lang_code Wiktionary database..."
     python3 "$SCRIPT_DIR/generate_rhyme_db.py" \
         "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \

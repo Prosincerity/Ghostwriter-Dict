@@ -90,13 +90,15 @@ class DownloadAndProcessTest(unittest.TestCase):
             release = "kaikki-v20260902"
             self.assertIn(f"Kaikki release: {release}", result.stdout)
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 18)
-            self.assertIn("extract_ipa.py", calls[0])
-            self.assertNotIn("--latin-headwords-only", calls[0])
-            self.assertIn("generate_espeak_ipa.py", calls[1])
+            self.assertEqual(len(calls), 22)
+            self.assertIn("build_reports.py downloading", calls[0])
+            self.assertIn("extract_ipa.py", calls[1])
+            self.assertNotIn("--latin-headwords-only", calls[1])
+            self.assertIn("--reuse-if-current", calls[1])
+            self.assertIn("generate_espeak_ipa.py", calls[2])
             for archive in ("de-extract.jsonl.gz", "tr-extract.jsonl.gz",
                             "raw-wiktextract-data.jsonl.gz"):
-                self.assertIn(f"--source-archive {root / 'raw' / archive}", calls[1])
+                self.assertIn(f"--source-archive {root / 'raw' / archive}", calls[2])
             self.assertEqual(sum("clean_rhyme_words.py" in call for call in calls), 6)
             self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
             self.assertEqual(

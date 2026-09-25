@@ -90,7 +90,7 @@ class GenerateEspeakIpaTest(unittest.TestCase):
             noipa = language_dir / "wordlist_en_noipa.txt"
             noipa.write_text("hello\n", encoding="utf-8")
             output = language_dir / "wordlist_en_espeak_ipa.txt"
-            report_path = language_dir / "reports" / "wordlist_en_espeak_ipa_source.json"
+            report_path = language_dir / "reports" / "ipa_generation" / "wordlist_en_espeak_ipa_source.json"
             fake_espeak = root / "espeak-ng"
             fake_espeak.write_text(FAKE_ESPEAK, encoding="utf-8")
             fake_espeak.chmod(0o755)
@@ -110,9 +110,13 @@ class GenerateEspeakIpaTest(unittest.TestCase):
             self.assertEqual(report["source_archives"][0]["file"], str(archive))
             self.assertEqual(report["source_archives"][0]["etag"], '"first"')
             self.assertEqual(report["generated_words"], 1)
+            self.assertIn("generator_sha256", report)
+            stage_report = language_dir / "reports" / "ipa_generation" / "report.json"
+            self.assertEqual(json.loads(stage_report.read_text(encoding="utf-8"))["status"], "generated")
             self.assertEqual(call_log.read_text(encoding="utf-8").splitlines(), ["en"])
 
             self.assertIn("Reusing en eSpeak IPA", run().stdout)
+            self.assertEqual(json.loads(stage_report.read_text(encoding="utf-8"))["status"], "reused")
             self.assertEqual(call_log.read_text(encoding="utf-8").splitlines(), ["en"])
             cached_command = command.copy()
             cached_command[cached_command.index("--espeak") + 1] = "missing-espeak"
@@ -122,25 +126,31 @@ class GenerateEspeakIpaTest(unittest.TestCase):
             )
             self.assertIn("Reusing en eSpeak IPA", cached_result.stdout)
 
+            stale_report = json.loads(report_path.read_text(encoding="utf-8"))
+            stale_report["generator_sha256"] = "previous-code-version"
+            report_path.write_text(json.dumps(stale_report), encoding="utf-8")
+            run()
+            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 2)
+
             archive.write_bytes(b"second download")
             Path(f"{archive}.etag").write_text('"second"\n', encoding="utf-8")
             run()
-            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 2)
+            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 3)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))
                              ["source_archives"][0]["etag"], '"second"')
 
             output.unlink()
             run()
-            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 3)
+            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 4)
 
             noipa.write_text("hello\nworld\n", encoding="utf-8")
             run()
-            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 4)
+            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 5)
             self.assertEqual(len(output.read_text(encoding="utf-8").splitlines()), 2)
 
             output.write_text("damaged\n", encoding="utf-8")
             run()
-            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 5)
+            self.assertEqual(len(call_log.read_text(encoding="utf-8").splitlines()), 6)
             self.assertEqual(len(output.read_text(encoding="utf-8").splitlines()), 2)
             self.assertFalse(Path(f"{report_path}.part").exists())
 
