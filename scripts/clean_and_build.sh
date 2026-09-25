@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname -- "$SCRIPT_DIR")"
 OUT_DIR="$PROJECT_DIR/out"
 RELEASE_VERSION=""
+REPLACE_EXTREME_MISMATCHES=false
+EXTREME_DISTANCE=""
 
 usage() {
     cat <<EOF
@@ -17,6 +19,8 @@ This command does not download archives or extract Wiktionary data.
 
 Options:
   --release-version VERSION  Release slug used in database filenames (required)
+  --replace-extreme-mismatches  Move extreme IPA mismatches to eSpeak output
+  --extreme-distance NUMBER  Comparison threshold from 0 to 1 (default: 0.8)
   -h, --help                 Show this help
 EOF
 }
@@ -29,6 +33,18 @@ while (( $# > 0 )); do
                 exit 2
             fi
             RELEASE_VERSION="$2"
+            shift 2
+            ;;
+        --replace-extreme-mismatches)
+            REPLACE_EXTREME_MISMATCHES=true
+            shift
+            ;;
+        --extreme-distance)
+            if (( $# < 2 )); then
+                echo "error: --extreme-distance requires a value" >&2
+                exit 2
+            fi
+            EXTREME_DISTANCE="$2"
             shift 2
             ;;
         -h|--help)
@@ -65,6 +81,13 @@ for lang_code in en de tr; do
 done
 
 echo "Rebuilding cleaned lists and databases for $RELEASE_VERSION"
+IPA_OPTIONS=()
+if [[ "$REPLACE_EXTREME_MISMATCHES" == true ]]; then
+    IPA_OPTIONS+=(--replace-extreme-mismatches)
+fi
+if [[ -n "$EXTREME_DISTANCE" ]]; then
+    IPA_OPTIONS+=(--extreme-distance "$EXTREME_DISTANCE")
+fi
 for lang_code in en de tr; do
     language_dir="$OUT_DIR/$lang_code"
 
@@ -86,7 +109,8 @@ for lang_code in en de tr; do
         "$language_dir/wordlist_${lang_code}_espeak_words_cleaned.txt" \
         "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \
         "$language_dir/wordlist_${lang_code}_espeak_rhyme_eligible.txt" \
-        --lang-code "$lang_code"
+        --lang-code "$lang_code" \
+        "${IPA_OPTIONS[@]}"
 
     echo "Building $lang_code Wiktionary database..."
     python3 "$SCRIPT_DIR/generate_rhyme_db.py" \

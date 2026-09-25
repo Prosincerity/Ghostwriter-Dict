@@ -47,7 +47,8 @@ class CleanAndBuildTest(unittest.TestCase):
 
             release = "kaikki-v20260909"
             result = subprocess.run(
-                [str(script), "--release-version", release],
+                [str(script), "--release-version", release,
+                 "--replace-extreme-mismatches", "--extreme-distance", "0.9"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -60,6 +61,10 @@ class CleanAndBuildTest(unittest.TestCase):
                 sum("clean_rhyme_words.py" in call for call in calls), 6
             )
             self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
+            self.assertTrue(all(
+                "--replace-extreme-mismatches --extreme-distance 0.9" in call
+                for call in calls if "clean_rhyme_ipa.py" in call
+            ))
             self.assertEqual(sum("generate_rhyme_db.py" in call for call in calls), 6)
             self.assertTrue(all("extract_ipa.py" not in call for call in calls))
             self.assertTrue(
