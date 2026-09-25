@@ -80,7 +80,8 @@ class DownloadAndProcessTest(unittest.TestCase):
             environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
             environment["PIPELINE_CALL_LOG"] = str(call_log)
             result = subprocess.run(
-                [str(pipeline)],
+                [str(pipeline), "--replace-extreme-mismatches",
+                 "--extreme-distance", "0.9"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -95,6 +96,10 @@ class DownloadAndProcessTest(unittest.TestCase):
             self.assertIn("generate_espeak_ipa.py", calls[1])
             self.assertEqual(sum("clean_rhyme_words.py" in call for call in calls), 6)
             self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
+            self.assertTrue(all(
+                "--replace-extreme-mismatches --extreme-distance 0.9" in call
+                for call in calls if "clean_rhyme_ipa.py" in call
+            ))
             for lang_code in ("en", "de", "tr"):
                 self.assertTrue(
                     any(

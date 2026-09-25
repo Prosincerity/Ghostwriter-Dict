@@ -15,6 +15,8 @@ TR_URL="https://kaikki.org/dictionary/downloads/tr/tr-extract.jsonl.gz"
 EN_URL="https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz"
 RELEASE_VERSION=""
 SKIP_DOWNLOAD=false
+REPLACE_EXTREME_MISMATCHES=false
+EXTREME_DISTANCE=""
 
 usage() {
     cat <<EOF
@@ -26,6 +28,8 @@ six finished SQLite databases for English, German, and Turkish.
 Options:
   --release-version VERSION  Override the slug derived from the English date
   --skip-download            Reuse local archives (requires --release-version)
+  --replace-extreme-mismatches  Move extreme IPA mismatches to eSpeak output
+  --extreme-distance NUMBER  Comparison threshold from 0 to 1 (default: 0.8)
   -h, --help                 Show this help
 EOF
 }
@@ -43,6 +47,18 @@ while (( $# > 0 )); do
         --skip-download)
             SKIP_DOWNLOAD=true
             shift
+            ;;
+        --replace-extreme-mismatches)
+            REPLACE_EXTREME_MISMATCHES=true
+            shift
+            ;;
+        --extreme-distance)
+            if (( $# < 2 )); then
+                echo "error: --extreme-distance requires a value" >&2
+                exit 2
+            fi
+            EXTREME_DISTANCE="$2"
+            shift 2
             ;;
         -h|--help)
             usage
@@ -173,6 +189,14 @@ fi
 
 echo "Kaikki release: $RELEASE_VERSION"
 
+IPA_OPTIONS=()
+if [[ "$REPLACE_EXTREME_MISMATCHES" == true ]]; then
+    IPA_OPTIONS+=(--replace-extreme-mismatches)
+fi
+if [[ -n "$EXTREME_DISTANCE" ]]; then
+    IPA_OPTIONS+=(--extreme-distance "$EXTREME_DISTANCE")
+fi
+
 echo "Merging lang_code=en, lang_code=de, and lang_code=tr entries from all editions..."
 python3 "$SCRIPT_DIR/extract_ipa.py" \
     "$DE_ARCHIVE" \
@@ -207,7 +231,8 @@ for lang_code in en de tr; do
         "$language_dir/wordlist_${lang_code}_espeak_words_cleaned.txt" \
         "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \
         "$language_dir/wordlist_${lang_code}_espeak_rhyme_eligible.txt" \
-        --lang-code "$lang_code"
+        --lang-code "$lang_code" \
+        "${IPA_OPTIONS[@]}"
 
     echo "Building $lang_code Wiktionary database..."
     python3 "$SCRIPT_DIR/generate_rhyme_db.py" \
