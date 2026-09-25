@@ -541,13 +541,6 @@ def clean_ipa_wordlists(
                     )]
                     for wiktionary_ipa in wiktionary_ipas:
                         if not normalized:
-                            write_json_line(comparisons, {
-                                "word": word, "wiktionary_ipa": wiktionary_ipa,
-                                "espeak_ipa": raw_ipa,
-                                "action": "comparison_unavailable",
-                                "validation_reasons": [item["reason"] for item in rejected],
-                                "policy_version": POLICY_VERSION,
-                            })
                             counts["comparison_unavailable_variants"] += 1
                             continue
                         espeak_ipa, comparison = min(
@@ -576,14 +569,16 @@ def clean_ipa_wordlists(
                             })
                         elif extreme:
                             counts["extreme_review_variants"] += 1
-                        write_json_line(comparisons, {
-                            "word": word, "wiktionary_ipa": wiktionary_ipa,
-                            "espeak_ipa": espeak_ipa,
-                            "action": "replaced_with_espeak" if replace else "kept_wiktionary",
-                            "extreme_mismatch": extreme,
-                            "policy_version": POLICY_VERSION,
-                            **comparison,
-                        })
+                        if extreme or comparison["phoneme_distance_ratio"] > 0.5:
+                            write_json_line(comparisons, {
+                                "word": word, "wiktionary_ipa": wiktionary_ipa,
+                                "espeak_ipa": espeak_ipa,
+                                "action": "replaced_with_espeak" if replace else "kept_wiktionary",
+                                "extreme_mismatch": extreme,
+                                "policy_version": POLICY_VERSION,
+                                **comparison,
+                            })
+                            counts["reported_comparison_variants"] += 1
                         counts["compared_variants"] += 1
                     if wiktionary_ipas and replace_extreme_mismatches:
                         staging.execute(

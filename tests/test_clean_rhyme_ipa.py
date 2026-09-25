@@ -96,8 +96,48 @@ class IpaRegenerationTest(unittest.TestCase):
                 )
             call.assert_called_once_with("fake", "en", ["cat"])
             self.assertEqual(report["counts"]["regeneration_requested_words"], 0)
+            self.assertEqual(report["counts"]["compared_variants"], 1)
             self.assertEqual(rows(root / "wiki_out.txt"), {"cat": ["/ˈkæt/"]})
             self.assertEqual(rows(root / "espeak_out.txt"), {"other": ["ˈʌðɚ"]})
+            self.assertEqual(
+                IPA.output_paths(root / "wiki_out.txt", root / "espeak_out.txt")["comparisons"]
+                .read_text(encoding="utf-8"), "",
+            )
+
+    def test_reports_only_extreme_or_distance_above_half(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            wiki_input = root / "wiki.txt"
+            espeak_input = root / "espeak.txt"
+            wiki_output = root / "wiki_out.txt"
+            espeak_output = root / "espeak_out.txt"
+            wiki_input.write_text(
+                'boundary\t["/ˈkæts/"]\n'
+                'large\t["/ˈkæbɪn/"]\n'
+                'extreme\t["/ˈkætsbɪnd/"]\n', encoding="utf-8",
+            )
+            espeak_input.write_text("", encoding="utf-8")
+            self.assertEqual(
+                IPA.compare_pronunciations("/ˈkæts/", "ˈpɑts", "en")["phoneme_distance_ratio"],
+                0.5,
+            )
+            with mock.patch.object(IPA, "call_espeak", return_value=[
+                "ˈpɑts", "ˈtudɪn", "ˈpɑdzbɪnd",
+            ]):
+                report = IPA.clean_ipa_wordlists(
+                    wiki_input, espeak_input, wiki_output, espeak_output,
+                    "en", "fake", extreme_distance=0.5,
+                )
+            comparisons = [json.loads(line) for line in
+                           IPA.output_paths(wiki_output, espeak_output)["comparisons"]
+                           .read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(report["counts"]["compared_variants"], 3)
+            self.assertEqual(report["counts"]["reported_comparison_variants"], 2)
+            self.assertEqual([row["word"] for row in comparisons], ["large", "extreme"])
+            self.assertGreater(comparisons[0]["phoneme_distance_ratio"], 0.5)
+            self.assertFalse(comparisons[0]["extreme_mismatch"])
+            self.assertEqual(comparisons[1]["phoneme_distance_ratio"], 0.5)
+            self.assertTrue(comparisons[1]["extreme_mismatch"])
 
     def test_extreme_comparison_reports_first_and_opt_in_moves_only_bad_variant(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -125,8 +165,8 @@ class IpaRegenerationTest(unittest.TestCase):
             comparisons = [json.loads(line) for line in
                            IPA.output_paths(wiki_output, espeak_output)["comparisons"]
                            .read_text(encoding="utf-8").splitlines()]
-            self.assertEqual(len(comparisons), 2)
-            self.assertEqual([row["extreme_mismatch"] for row in comparisons], [True, False])
+            self.assertEqual(len(comparisons), 1)
+            self.assertEqual([row["extreme_mismatch"] for row in comparisons], [True])
             self.assertTrue(all(row["action"] == "kept_wiktionary" for row in comparisons))
 
             with mock.patch.object(IPA, "call_espeak", return_value=["ˈʃuːɡɛlmə"]):
