@@ -160,10 +160,12 @@ def clean_pronunciation(
 
 
 class ProgressBar:
-    def __init__(self, label: str, total: int, stream: TextIO = sys.stderr):
+    def __init__(self, label: str, total: int, stream: TextIO = sys.stderr,
+                 unit: str = "words"):
         self.label = label
         self.total = total
         self.stream = stream
+        self.unit = unit
         self.last_width = 0
 
     def update(self, current: int) -> None:
@@ -173,7 +175,7 @@ class ProgressBar:
         filled = round(30 * fraction)
         message = (
             f"\r{self.label} [{'#' * filled}{'-' * (30 - filled)}] "
-            f"{fraction:6.2%} {current:,}/{self.total:,} words"
+            f"{fraction:6.2%} {current:,}/{self.total:,} {self.unit}"
         )
         self.stream.write(message.ljust(self.last_width))
         self.stream.flush()
@@ -329,34 +331,44 @@ def clean_ipa_wordlists(
                                 (word, position))
 
         with parts["changes"].open("w", encoding="utf-8", newline="\n") as changes:
-            for source_name, input_path in (("wiktionary", wiki_input), ("espeak", espeak_input)):
-                with input_path.open("r", encoding="utf-8") as source:
-                    for line_number, line in enumerate(source, start=1):
-                        word, ipas = parse_wordlist_line(input_path, line_number, line)
-                        counts[f"{source_name}_input_words"] += 1
-                        counts[f"{source_name}_input_pronunciations"] += len(ipas)
-                        for ipa in ipas:
-                            normalized, transformations, rejected = clean_pronunciation(ipa, lang_code)
-                            if transformations or (normalized and normalized != [ipa]):
-                                write_json_line(changes, {
-                                    "source": source_name, "word": word,
-                                    "original_ipa": ipa, "normalized_ipas": normalized,
-                                    "transformations": transformations,
-                                    "policy_version": POLICY_VERSION,
-                                })
-                                counts["transformed_pronunciations"] += 1
-                                transformation_reasons.update(transformations)
-                            for item in rejected:
-                                reject(source_name, word, ipa, str(item["reason"]),
-                                       item.get("details", {}), line_number)
-                            for candidate in normalized:
-                                if source_name == "wiktionary" and not any(
-                                    marker in candidate for marker in STRESS_MARKERS
-                                ):
-                                    reject(source_name, word, ipa, "missing_stress_mark",
-                                           {"candidate": candidate}, line_number)
-                                else:
-                                    stage_ipa(source_name, word, candidate)
+            input_bytes = wiki_input.stat().st_size + espeak_input.stat().st_size
+            scan_progress = ProgressBar("Validating IPA", input_bytes, unit="bytes")
+            scanned_bytes = 0
+            try:
+                for source_name, input_path in (("wiktionary", wiki_input), ("espeak", espeak_input)):
+                    with input_path.open("r", encoding="utf-8") as source:
+                        for line_number, line in enumerate(source, start=1):
+                            scanned_bytes += len(line.encode("utf-8"))
+                            word, ipas = parse_wordlist_line(input_path, line_number, line)
+                            counts[f"{source_name}_input_words"] += 1
+                            counts[f"{source_name}_input_pronunciations"] += len(ipas)
+                            for ipa in ipas:
+                                normalized, transformations, rejected = clean_pronunciation(ipa, lang_code)
+                                if transformations or (normalized and normalized != [ipa]):
+                                    write_json_line(changes, {
+                                        "source": source_name, "word": word,
+                                        "original_ipa": ipa, "normalized_ipas": normalized,
+                                        "transformations": transformations,
+                                        "policy_version": POLICY_VERSION,
+                                    })
+                                    counts["transformed_pronunciations"] += 1
+                                    transformation_reasons.update(transformations)
+                                for item in rejected:
+                                    reject(source_name, word, ipa, str(item["reason"]),
+                                           item.get("details", {}), line_number)
+                                for candidate in normalized:
+                                    if source_name == "wiktionary" and not any(
+                                        marker in candidate for marker in STRESS_MARKERS
+                                    ):
+                                        reject(source_name, word, ipa, "missing_stress_mark",
+                                               {"candidate": candidate}, line_number)
+                                    else:
+                                        stage_ipa(source_name, word, candidate)
+                            if line_number % 1_000 == 0:
+                                scan_progress.update(scanned_bytes)
+                    scan_progress.update(scanned_bytes)
+            finally:
+                scan_progress.finish()
 
             staging.commit()
             regeneration_count = staging.execute(

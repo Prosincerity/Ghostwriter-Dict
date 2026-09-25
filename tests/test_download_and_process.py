@@ -90,9 +90,11 @@ class DownloadAndProcessTest(unittest.TestCase):
             release = "kaikki-v20260902"
             self.assertIn(f"Kaikki release: {release}", result.stdout)
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 14)
+            self.assertEqual(len(calls), 17)
             self.assertIn("extract_ipa.py", calls[0])
             self.assertIn("generate_espeak_ipa.py", calls[1])
+            self.assertEqual(sum("clean_rhyme_words.py" in call for call in calls), 6)
+            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
             for lang_code in ("en", "de", "tr"):
                 self.assertTrue(
                     any(

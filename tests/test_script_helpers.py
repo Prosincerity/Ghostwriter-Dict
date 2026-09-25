@@ -31,9 +31,8 @@ ESPEAK = load_script(
     "generate_espeak_ipa_helpers", SCRIPTS_DIR / "generate_espeak_ipa.py"
 )
 RHYME = load_script("generate_rhyme_db_helpers", SCRIPTS_DIR / "generate_rhyme_db.py")
-CLEANER = load_script(
-    "clean_rhyme_wordlist_helpers", SCRIPTS_DIR / "clean_rhyme_wordlist.py"
-)
+WORDS = load_script("clean_rhyme_words_helpers", SCRIPTS_DIR / "clean_rhyme_words.py")
+IPA = load_script("clean_rhyme_ipa_helpers", SCRIPTS_DIR / "clean_rhyme_ipa.py")
 SMOKE = load_script(
     "run_rhyme_smoke_test_helpers",
     PROJECT_DIR / "tests" / "scripts" / "run_rhyme_smoke_test.py",
@@ -51,7 +50,8 @@ class ProgressBarTest(unittest.TestCase):
             (EXTRACT.ProgressBar(10), (5, 2, {"en": 1}), "Reading"),
             (ESPEAK.ProgressBar("Generating en", 10), (5,), "Generating en"),
             (RHYME.ProgressBar(10), (5, 2, 3), "Building"),
-            (CLEANER.ProgressBar(10), (5, 2, 1), "Cleaning"),
+            (WORDS.ProgressBar(10), (5, 2, 1), "Cleaning"),
+            (IPA.ProgressBar("Regenerating en", 10), (5,), "Regenerating en"),
             (SMOKE.ProgressBar("Sampling en", 10), (5, 2), "Sampling en"),
         ]
         for progress, update_args, label in cases:
@@ -65,7 +65,7 @@ class ProgressBarTest(unittest.TestCase):
 
     def test_progress_bars_are_silent_for_non_tty_streams(self):
         stream = io.StringIO()
-        progress = CLEANER.ProgressBar(0, stream=stream)
+        progress = WORDS.ProgressBar(0, stream=stream)
         progress.update(0, 0, 0)
         progress.finish()
         self.assertEqual(stream.getvalue(), "")
@@ -140,24 +140,19 @@ class ExtractionHelperTest(unittest.TestCase):
 
 
 class CleanupHelperTest(unittest.TestCase):
-    def test_output_paths_and_legacy_paths_stay_under_reports(self):
+    def test_output_paths_stay_under_reports(self):
         output = Path("build/en/wordlist_en_rhyme_eligible.txt")
-        paths = CLEANER.output_paths(output)
+        paths = WORDS.output_paths(output)
 
         self.assertEqual(paths["wordlist"], output)
-        for name in ("rejected", "rejected_words", "changes", "word_changes", "report"):
+        for name in ("rejected_words", "word_changes", "report"):
             self.assertEqual(paths[name].parent, output.parent / "reports")
-        self.assertEqual(
-            CLEANER.legacy_rejection_paths(output),
-            (
-                output.parent / "reports/wordlist_en_rhyme_eligible_rejected.jsonl",
-                output.parent
-                / "reports/wordlist_en_rhyme_eligible_rejected_words.jsonl",
-            ),
-        )
+        ipa_paths = IPA.output_paths(output, output.parent / "espeak.txt")
+        for name in ("rejected", "changes", "report"):
+            self.assertEqual(ipa_paths[name].parent, output.parent / "reports")
 
     def test_headword_normalization_reports_each_transformation_once(self):
-        normalized, transformations = CLEANER.normalize_headword(
+        normalized, transformations = WORDS.normalize_headword(
             "soft\N{SOFT HYPHEN}—quote’s₃"
         )
 
@@ -173,58 +168,53 @@ class CleanupHelperTest(unittest.TestCase):
         )
 
     def test_notation_helpers_cover_wrappers_splits_and_delimiters(self):
-        self.assertEqual(CLEANER.wrapper("/a/"), ("/", "/", "a"))
-        self.assertIsNone(CLEANER.wrapper("/a]"))
+        self.assertEqual(IPA.wrapper("/a/"), ("/", "/", "a"))
+        self.assertIsNone(IPA.wrapper("/a]"))
         self.assertEqual(
-            CLEANER.split_alternatives("/a/, [b]"),
+            IPA.split_alternatives("/a/, [b]"),
             (["/a/", "[b]"], ["split_wrapped_comma_alternatives"]),
         )
-        self.assertEqual(CLEANER.expand_optional_groups("/a/"), (["/a/"], []))
-        self.assertTrue(CLEANER.validate_delimiters("[a]"))
-        self.assertFalse(CLEANER.validate_delimiters("a/b"))
+        self.assertEqual(IPA.expand_optional_groups("/a/"), (["/a/"], []))
+        self.assertTrue(IPA.validate_delimiters("[a]"))
+        self.assertFalse(IPA.validate_delimiters("a/b"))
 
     def test_json_line_writer_is_compact_unicode_json(self):
         output = io.StringIO()
-        CLEANER.write_json_line(output, {"word": "Hawaiʻian", "reason": "test"})
+        WORDS.write_json_line(output, {"word": "Hawaiʻian", "reason": "test"})
         self.assertEqual(
             output.getvalue(),
             '{"reason":"test","word":"Hawaiʻian"}\n',
         )
 
     def test_group_writer_handles_empty_and_detailed_groups(self):
-        connection = sqlite3.connect(":memory:")
-        try:
-            connection.execute(
-                "CREATE TABLE rejected_ipas ("
-                "reason TEXT, ipa TEXT, entry TEXT, position INTEGER)"
-            )
-            empty = io.StringIO()
-            CLEANER.write_rejection_groups(
-                empty, connection, "rejected_ipas", "ipa", "ipas", True
-            )
-            self.assertEqual(json.loads(empty.getvalue())["groups"], [])
-
-            entry = {"word": "bad", "ipa": "/…/", "reason": "incomplete"}
-            connection.execute(
-                "INSERT INTO rejected_ipas VALUES (?, ?, ?, ?)",
-                ("incomplete", "/…/", json.dumps(entry), 1),
-            )
-            output = io.StringIO()
-            CLEANER.write_rejection_groups(
-                output, connection, "rejected_ipas", "ipa", "ipas", True
-            )
-            group = json.loads(output.getvalue())["groups"][0]
-            self.assertEqual(group["ipas"], ["/…/"])
-            self.assertEqual(group["entries"], [entry])
-        finally:
-            connection.close()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "rejected.json"
+            connection = sqlite3.connect(":memory:")
+            try:
+                connection.execute(
+                    "CREATE TABLE rejected (source TEXT, word TEXT, ipa TEXT, "
+                    "reason TEXT, details TEXT, position INTEGER)"
+                )
+                IPA.write_rejections(output, connection)
+                self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["groups"], [])
+                connection.execute(
+                    "INSERT INTO rejected VALUES (?, ?, ?, ?, ?, ?)",
+                    ("wiktionary", "bad", "/…/", "incomplete", "{}", 1),
+                )
+                IPA.write_rejections(output, connection)
+                group = json.loads(output.read_text(encoding="utf-8"))["groups"][0]
+                self.assertEqual(group["ipas"], ["/…/"])
+                self.assertEqual(group["entries"][0]["word"], "bad")
+                self.assertEqual(group["entries"][0]["source"], "wiktionary")
+            finally:
+                connection.close()
 
     def test_staging_database_closes_when_initialization_fails(self):
         connection = mock.Mock()
         connection.executescript.side_effect = sqlite3.OperationalError("full")
-        with mock.patch.object(CLEANER.sqlite3, "connect", return_value=connection):
+        with mock.patch.object(IPA.sqlite3, "connect", return_value=connection):
             with self.assertRaisesRegex(sqlite3.OperationalError, "full"):
-                CLEANER.create_staging_database(Path("staging.db"))
+                IPA.create_staging_database(Path("staging.db"))
         connection.close.assert_called_once_with()
 
 
