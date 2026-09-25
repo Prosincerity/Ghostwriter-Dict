@@ -1,6 +1,7 @@
 import gzip
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,47 @@ def write_gzip_jsonl(path, records):
 
 
 class ExtractIpaTest(unittest.TestCase):
+    def test_reuses_complete_wordlists_until_source_code_or_output_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            extractor = scripts / "extract_ipa.py"
+            shutil.copy2(EXTRACTOR, extractor)
+            shutil.copy2(EXTRACTOR.parent / "build_reports.py", scripts / "build_reports.py")
+            source = root / "entries.jsonl.gz"
+            write_gzip_jsonl(source, [{
+                "word": "Hello", "lang_code": "en", "sounds": [{"ipa": "/ˈhɛloʊ/"}],
+            }])
+            outdir = root / "out"
+            command = [sys.executable, str(extractor), str(source), "--lang-code", "en",
+                       "--outdir", str(outdir), "--reuse-if-current"]
+
+            def run():
+                return subprocess.run(command, check=True, capture_output=True, text=True)
+
+            self.assertIn("JSONL records", run().stdout)
+            ipa = outdir / "en" / "wordlist_en_ipa.txt"
+            report = outdir / "en" / "reports" / "reading" / "report.json"
+            first_mtime = ipa.stat().st_mtime_ns
+            self.assertIn("Reusing canonical wordlists", run().stdout)
+            self.assertEqual(ipa.stat().st_mtime_ns, first_mtime)
+            self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["words_with_ipa"], 1)
+
+            ipa.write_text("damaged\n", encoding="utf-8")
+            self.assertIn("JSONL records", run().stdout)
+            self.assertEqual(ipa.read_text(encoding="utf-8"), 'hello\t["/ˈhɛloʊ/"]\n')
+
+            write_gzip_jsonl(source, [{
+                "word": "New", "lang_code": "en", "sounds": [{"ipa": "/nuː/"}],
+            }])
+            self.assertIn("JSONL records", run().stdout)
+            self.assertIn("new", ipa.read_text(encoding="utf-8"))
+
+            with extractor.open("a", encoding="utf-8") as destination:
+                destination.write("\n# changed extraction code\n")
+            self.assertIn("JSONL records", run().stdout)
+
     def test_default_output_is_script_relative(self):
         spec = importlib.util.spec_from_file_location("extract_ipa", EXTRACTOR)
         assert spec is not None and spec.loader is not None
