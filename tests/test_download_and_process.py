@@ -80,8 +80,7 @@ class DownloadAndProcessTest(unittest.TestCase):
             environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
             environment["PIPELINE_CALL_LOG"] = str(call_log)
             result = subprocess.run(
-                [str(pipeline), "--replace-extreme-mismatches",
-                 "--extreme-distance", "0.9"],
+                [str(pipeline), "--extreme-distance", "0.9"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -125,6 +124,18 @@ class DownloadAndProcessTest(unittest.TestCase):
                     f"{lang_code}_espeak_{release}.db.gz", result.stdout
                 )
             self.assertEqual(len(list((root / "raw").glob("*.jsonl.gz"))), 3)
+
+            call_log.write_text("", encoding="utf-8")
+            subprocess.run(
+                [str(pipeline), "--report-only", "--extreme-distance", "0.9"],
+                check=True, capture_output=True, text=True, env=environment,
+            )
+            audit_calls = call_log.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in audit_calls), 3)
+            self.assertTrue(all(
+                "--replace-extreme-mismatches" not in call
+                for call in audit_calls if "clean_rhyme_ipa.py" in call
+            ))
 
     def test_skip_download_requires_an_explicit_release(self):
         result = subprocess.run(

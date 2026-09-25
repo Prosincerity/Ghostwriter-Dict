@@ -52,15 +52,14 @@ pronunciations:
   --release-version kaikki-v20260902
 ```
 
-Default cleanup compares valid Wiktionary IPA with eSpeak and writes an audit
-without changing those entries. After reviewing the comparison report, an
-explicit rebuild can move only extreme mismatches to the eSpeak output:
+Both build workflows now move extreme mismatches to the eSpeak output by
+default and still write the comparison audit. To inspect the report without
+moving any valid Wiktionary IPA, use:
 
 ```bash
 ./scripts/clean_and_build.sh \
   --release-version kaikki-v20260902 \
-  --replace-extreme-mismatches \
-  --extreme-distance 0.8
+  --report-only
 ```
 
 Both workflows produce these databases:
@@ -185,12 +184,14 @@ The IPA stage also generates eSpeak IPA once per Wiktionary word and compares
 each valid variant using complete phoneme tokens from the audited language
 inventory. Its comparison report includes phoneme edit counts, distance
 normalized by the longer pronunciation, and stressed rhyme tails. The default
-is report-only. An extreme candidate requires at least five phonemes in each
-pronunciation, four phoneme edits, and a normalized distance of at least `0.8`.
-The threshold is provisional; review the report for each language before using
-`--replace-extreme-mismatches`. That option removes only flagged Wiktionary
-variants and puts the generated IPA in the eSpeak eligible list. Use
-`--extreme-distance` to set a reviewed threshold between zero and one.
+for direct `clean_rhyme_ipa.py` calls is report-only; the two build workflows
+pass `--replace-extreme-mismatches` by default. An extreme candidate requires
+at least five phonemes in each pronunciation, four phoneme edits, and a
+normalized distance of at least `0.8`.
+That option removes only flagged Wiktionary variants and puts the generated IPA
+in the eSpeak eligible list. Use `--report-only` with either build workflow to
+disable replacement, or `--extreme-distance` to set a threshold between zero
+and one.
 
 Cleanup never changes canonical files. Its reports include grouped word and
 IPA rejections, normalization logs, counts, reasons, and policy version.

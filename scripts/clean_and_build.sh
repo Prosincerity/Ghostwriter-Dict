@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname -- "$SCRIPT_DIR")"
 OUT_DIR="$PROJECT_DIR/out"
 RELEASE_VERSION=""
-REPLACE_EXTREME_MISMATCHES=false
+REPLACE_EXTREME_MISMATCHES=true
 EXTREME_DISTANCE=""
 
 usage() {
@@ -19,7 +19,8 @@ This command does not download archives or extract Wiktionary data.
 
 Options:
   --release-version VERSION  Release slug used in database filenames (required)
-  --replace-extreme-mismatches  Move extreme IPA mismatches to eSpeak output
+  --replace-extreme-mismatches  Move extreme IPA mismatches to eSpeak output (default)
+  --report-only             Audit mismatches without replacing IPA
   --extreme-distance NUMBER  Comparison threshold from 0 to 1 (default: 0.8)
   -h, --help                 Show this help
 EOF
@@ -37,6 +38,10 @@ while (( $# > 0 )); do
             ;;
         --replace-extreme-mismatches)
             REPLACE_EXTREME_MISMATCHES=true
+            shift
+            ;;
+        --report-only)
+            REPLACE_EXTREME_MISMATCHES=false
             shift
             ;;
         --extreme-distance)

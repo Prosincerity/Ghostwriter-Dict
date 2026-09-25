@@ -15,7 +15,7 @@ TR_URL="https://kaikki.org/dictionary/downloads/tr/tr-extract.jsonl.gz"
 EN_URL="https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz"
 RELEASE_VERSION=""
 SKIP_DOWNLOAD=false
-REPLACE_EXTREME_MISMATCHES=false
+REPLACE_EXTREME_MISMATCHES=true
 EXTREME_DISTANCE=""
 
 usage() {
@@ -28,7 +28,8 @@ SQLite databases, and their gzip release assets for English, German, and Turkish
 Options:
   --release-version VERSION  Override the slug derived from the English date
   --skip-download            Reuse local archives (requires --release-version)
-  --replace-extreme-mismatches  Move extreme IPA mismatches to eSpeak output
+  --replace-extreme-mismatches  Move extreme IPA mismatches to eSpeak output (default)
+  --report-only             Audit mismatches without replacing IPA
   --extreme-distance NUMBER  Comparison threshold from 0 to 1 (default: 0.8)
   -h, --help                 Show this help
 EOF
@@ -50,6 +51,10 @@ while (( $# > 0 )); do
             ;;
         --replace-extreme-mismatches)
             REPLACE_EXTREME_MISMATCHES=true
+            shift
+            ;;
+        --report-only)
+            REPLACE_EXTREME_MISMATCHES=false
             shift
             ;;
         --extreme-distance)
