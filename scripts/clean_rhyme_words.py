@@ -15,7 +15,7 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES
 
 
-POLICY_VERSION = "rhyme-cleanup-v14"
+POLICY_VERSION = "rhyme-cleanup-v15"
 BASE_HEADWORD_LETTERS = string.ascii_letters
 GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
 TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
@@ -187,6 +187,23 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
     return None
 
 
+def clean_headword(word: str, lang: str):
+    normalized, changes = normalize_headword(word)
+    if unicodedata.normalize("NFC", word) != word:
+        changes.append("normalize_nfc")
+    letters = normalized.replace(".", "")
+    if letters.isalpha() and letters.isupper() and len(letters) >= 2:
+        return normalized, changes, {"reason": "uppercase_abbreviation", "details": {}}
+    rejection = headword_rejection(normalized, lang)
+    if rejection:
+        return normalized, changes, rejection
+    cased = normalized.translate(str.maketrans("Iİ", "ıi")) if lang == "tr" else normalized
+    lowered = unicodedata.normalize("NFC", cased.lower())
+    if lowered != normalized:
+        changes.append("lowercase")
+    return lowered, changes, headword_rejection(lowered, lang)
+
+
 def write_json_line(stream: TextIO, value: dict[str, object]) -> None:
     stream.write(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     stream.write("\n")
@@ -206,7 +223,7 @@ def parse_word_row(path: Path, line_number: int, line: str) -> tuple[str, list[s
         not isinstance(ipa, str) or not ipa.strip() for ipa in ipas
     ):
         raise ValueError(f"{path}:{line_number}: expected non-empty IPA string array")
-    return unicodedata.normalize("NFC", word), ipas
+    return word, ipas
 
 
 def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[str, object]:
@@ -247,7 +264,7 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
                 word, ipas = parse_word_row(input_path, line_number, line)
                 counts["input_words"] += 1
                 counts["input_pronunciations"] += len(ipas)
-                normalized, changed = normalize_headword(word)
+                normalized, changed, rejection = clean_headword(word, lang_code)
                 if changed:
                     write_json_line(changes, {
                         "original_word": word, "normalized_word": normalized,
@@ -256,7 +273,6 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
                     })
                     counts["transformed_words"] += 1
                     transformations.update(changed)
-                rejection = headword_rejection(normalized, lang_code)
                 if rejection:
                     entry = {
                         "word": word, "normalized_word": normalized,

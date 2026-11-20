@@ -329,6 +329,7 @@ def create_staging_database(path: Path) -> sqlite3.Connection:
                 source TEXT NOT NULL, word TEXT NOT NULL, ipa TEXT NOT NULL,
                 reason TEXT NOT NULL, details TEXT NOT NULL, position INTEGER NOT NULL
             );
+            CREATE INDEX rejected_word ON rejected(source, word);
         """)
     except BaseException:
         staging.close()
@@ -393,6 +394,7 @@ def clean_ipa_wordlists(
     batch_size: int = 1000,
     replace_extreme_mismatches: bool = False,
     extreme_distance: float = DEFAULT_EXTREME_DISTANCE,
+    repair_requests: Optional[Path] = None,
 ) -> dict[str, object]:
     """Validate both sources and add eSpeak replacements for faulty Wiktionary IPA."""
     if batch_size < 1:
@@ -442,6 +444,15 @@ def clean_ipa_wordlists(
             if source == "wiktionary":
                 staging.execute("INSERT OR IGNORE INTO regeneration VALUES (?, ?)",
                                 (word, position))
+
+        if repair_requests is not None:
+            with repair_requests.open(encoding="utf-8") as requests:
+                for position, line in enumerate(requests):
+                    word, ipa, rejection = json.loads(line)
+                    reject("wiktionary", word, ipa, rejection["reason"],
+                           rejection.get("details", {}), position)
+                    staging.execute("INSERT OR IGNORE INTO comparison_requests VALUES (?, ?)",
+                                    (word, position))
 
         with (
             parts["changes"].open("w", encoding="utf-8", newline="\n") as changes,
