@@ -87,6 +87,8 @@ if [[ -n "$RELEASE_VERSION" && ! "$RELEASE_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+
 fi
 
 mkdir -p "$RAW_DIR" "$OUT_DIR"
+exec 9<"$OUT_DIR"
+flock --exclusive 9
 
 download() {
     local url="$1"
@@ -213,74 +215,5 @@ if [[ -n "$EXTREME_DISTANCE" ]]; then
     IPA_OPTIONS+=(--extreme-distance "$EXTREME_DISTANCE")
 fi
 
-echo "Merging lang_code=en, lang_code=de, and lang_code=tr entries from all editions..."
-python3 "$SCRIPT_DIR/extract_ipa.py" \
-    "$DE_ARCHIVE" \
-    "$TR_ARCHIVE" \
-    "$EN_ARCHIVE" \
-    --lang-code en \
-    --lang-code de \
-    --lang-code tr \
-    --reuse-if-current \
-    --outdir "$OUT_DIR"
-
-echo "Generating eSpeak IPA for words without Wiktionary IPA..."
-python3 "$SCRIPT_DIR/generate_espeak_ipa.py" --outdir "$OUT_DIR" \
-    --source-archive "$DE_ARCHIVE" \
-    --source-archive "$TR_ARCHIVE" \
-    --source-archive "$EN_ARCHIVE"
-
-for lang_code in en de tr; do
-    language_dir="$OUT_DIR/$lang_code"
-    echo "Cleaning $lang_code Wiktionary headwords..."
-    python3 "$SCRIPT_DIR/clean_rhyme_words.py" \
-        "$language_dir/wordlist_${lang_code}_ipa.txt" \
-        "$language_dir/wordlist_${lang_code}_wiktionary_words_cleaned.txt" \
-        --lang-code "$lang_code"
-
-    echo "Cleaning $lang_code eSpeak headwords..."
-    python3 "$SCRIPT_DIR/clean_rhyme_words.py" \
-        "$language_dir/wordlist_${lang_code}_espeak_ipa.txt" \
-        "$language_dir/wordlist_${lang_code}_espeak_words_cleaned.txt" \
-        --lang-code "$lang_code"
-
-    echo "Validating and repairing $lang_code IPA..."
-    python3 "$SCRIPT_DIR/clean_rhyme_ipa.py" \
-        "$language_dir/wordlist_${lang_code}_wiktionary_words_cleaned.txt" \
-        "$language_dir/wordlist_${lang_code}_espeak_words_cleaned.txt" \
-        "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \
-        "$language_dir/wordlist_${lang_code}_espeak_rhyme_eligible.txt" \
-        --lang-code "$lang_code" \
-        "${IPA_OPTIONS[@]}"
-
-    python3 "$SCRIPT_DIR/build_reports.py" cleaning --outdir "$OUT_DIR" \
-        --release-version "$RELEASE_VERSION" --lang-code "$lang_code" \
-        --comparison-mode "$(if [[ "$REPLACE_EXTREME_MISMATCHES" == true ]]; then echo replace_extreme; else echo report_only; fi)" \
-        --extreme-distance "${EXTREME_DISTANCE:-0.8}"
-
-    echo "Building $lang_code Wiktionary database..."
-    python3 "$SCRIPT_DIR/generate_rhyme_db.py" \
-        "$language_dir/wordlist_${lang_code}_rhyme_eligible.txt" \
-        "$language_dir/${lang_code}_${RELEASE_VERSION}.db" \
-        --lang-code "$lang_code" \
-        --release-version "$RELEASE_VERSION"
-
-    echo "Building $lang_code eSpeak database..."
-    python3 "$SCRIPT_DIR/generate_rhyme_db.py" \
-        "$language_dir/wordlist_${lang_code}_espeak_rhyme_eligible.txt" \
-        "$language_dir/${lang_code}_espeak_${RELEASE_VERSION}.db" \
-        --lang-code "$lang_code" \
-        --release-version "$RELEASE_VERSION"
-done
-
-echo "Packaging release archives and checksums..."
-python3 "$SCRIPT_DIR/package_release.py" --release-version "$RELEASE_VERSION"
-
-echo "Finished databases and release archives:"
-for lang_code in en de tr; do
-    echo "  $OUT_DIR/$lang_code/${lang_code}_${RELEASE_VERSION}.db"
-    echo "  $OUT_DIR/$lang_code/${lang_code}_${RELEASE_VERSION}.db.gz"
-    echo "  $OUT_DIR/$lang_code/${lang_code}_espeak_${RELEASE_VERSION}.db"
-    echo "  $OUT_DIR/$lang_code/${lang_code}_espeak_${RELEASE_VERSION}.db.gz"
-done
-echo "  $OUT_DIR/SHA256SUMS"
+python3 "$SCRIPT_DIR/pipeline.py" --release-version "$RELEASE_VERSION" "${IPA_OPTIONS[@]}" \
+    --archive "$DE_ARCHIVE" --archive "$TR_ARCHIVE" --archive "$EN_ARCHIVE"

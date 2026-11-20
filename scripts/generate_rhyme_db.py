@@ -416,6 +416,9 @@ def build_database(
 
         connection.executescript(INDEXES)
         connection.commit()
+        integrity = connection.execute("PRAGMA integrity_check").fetchone()
+        if integrity != ("ok",):
+            raise ValueError(f"database integrity check failed: {integrity}")
         unique_words = connection.execute(
             "SELECT COUNT(DISTINCT word) FROM dictionary"
         ).fetchone()[0]

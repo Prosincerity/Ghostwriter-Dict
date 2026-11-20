@@ -534,6 +534,10 @@ def clean_ipa_wordlists(
                             reject("espeak", word, raw_ipa, "espeak_generation_invalid",
                                    {"validation_reasons": [item["reason"] for item in rejected]}, processed)
                             counts["regeneration_failed_words"] += 1
+                            if repair_requests is not None and not staging.execute(
+                                "SELECT 1 FROM pronunciations WHERE word=? AND source='wiktionary'", (word,)
+                            ).fetchone():
+                                raise ValueError(f"{lang_code}: no valid source or repair for {word!r}: {raw_ipa!r}")
                         reasons = [row[0] for row in staging.execute(
                             "SELECT DISTINCT reason FROM rejected WHERE source = 'wiktionary' "
                             "AND word = ? ORDER BY reason", (word,)

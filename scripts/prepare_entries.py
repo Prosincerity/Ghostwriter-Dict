@@ -8,7 +8,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from clean_rhyme_ipa import clean_pronunciation
-from clean_rhyme_words import POLICY_VERSION, clean_headword
+from clean_rhyme_words import POLICY_VERSION, ProgressBar, clean_headword
 from extract_ipa import is_usable_ipa
 from generate_rhyme_db import STRESS_MARKERS
 from raw_entries import raw_paths
@@ -23,6 +23,7 @@ def prepared_paths(directory, lang):
         "missing": Path(f"{stem}_noipa.txt"),
         "repairs": reports / "repair_requests.jsonl",
         "audit": reports / "entries.jsonl",
+        "report": reports / "entries_report.json",
         "summary": reports / "summary.md",
     }
 
@@ -42,6 +43,7 @@ def prepare(directory, lang):
             PRAGMA journal_mode=OFF;
             PRAGMA synchronous=OFF;
             CREATE TABLE words(word TEXT PRIMARY KEY) WITHOUT ROWID;
+            CREATE TABLE excluded(reason TEXT, original TEXT);
             CREATE TABLE ipa(word TEXT, kind TEXT, value TEXT,
                              PRIMARY KEY(word,kind,value)) WITHOUT ROWID;
         """)
@@ -55,12 +57,20 @@ def prepare(directory, lang):
             def audit(word, reason, **details):
                 print(json.dumps(dict(word=word, reason=reason, **details)), file=out["audit"])
 
-            for path in raw_paths(directory, lang):
+            inputs = raw_paths(directory, lang)
+            progress = ProgressBar(sum(path.stat().st_size for path in inputs))
+            cleanup.callback(progress.finish)
+            consumed = 0
+            for path in inputs:
                 with path.open(encoding="ascii") as entries:
                     for line in entries:
+                        consumed += len(line)
+                        if counts["input"] % 1000 == 0:
+                            progress.update(consumed, counts["input"], counts["retained"])
                         original, fields = json.loads(line)
                         counts["input"] += 1
                         if not isinstance(original, str):
+                            db.execute("INSERT INTO excluded VALUES (?, ?)", ("missing_text_headword", json.dumps(original)))
                             audit(original, "missing_text_headword")
                             reasons["missing_text_headword"] += 1
                             counts["removed"] += 1
@@ -70,6 +80,7 @@ def prepare(directory, lang):
                         if changes:
                             audit(original, "normalized", normalized=word, changes=changes)
                         if rejected:
+                            db.execute("INSERT INTO excluded VALUES (?, ?)", (rejected["reason"], json.dumps(original)))
                             audit(original, **rejected, normalized=word)
                             reasons[rejected["reason"]] += 1
                             counts["removed"] += 1
@@ -117,5 +128,15 @@ def prepare(directory, lang):
                 print(f"- {key}: {value}", file=out["summary"])
             print("\nSee [entry decisions](entries.jsonl) and [repair requests](repair_requests.jsonl).",
                   file=out["summary"])
+            json.dump(dict(policy_version=POLICY_VERSION, counts=counts, rule_counts=reasons),
+                      out["report"], indent=2, sort_keys=True)
+            previous = None
+            for reason, encoded in db.execute("SELECT reason,original FROM excluded ORDER BY reason,original"):
+                if reason != previous:
+                    print(f"\n## {reason}\n", file=out["summary"])
+                    previous = reason
+                # Indented JSON strings safely display Markdown syntax and control characters.
+                value = json.dumps(json.loads(encoded), ensure_ascii=False)
+                print("    " + value.encode("utf-8", "backslashreplace").decode(), file=out["summary"])
         for path in paths.values():
             os.replace(f"{path}.part", path)
