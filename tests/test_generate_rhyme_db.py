@@ -42,6 +42,16 @@ class PhonemeTokenizationTest(unittest.TestCase):
             ["t", "yː", "ɐ̯"],
         )
 
+    def test_prefix_modifier_before_canonically_composed_vowel(self):
+        for ipa in ("ˈʰa\u0301", "ˈʰá"):
+            unknown = Counter()
+            self.assertEqual(RHYME_DB.tokenize_ipa(ipa, "en", unknown), ["ˈ", "ʰá"])
+            self.assertFalse(unknown)
+            self.assertTrue(RHYME_DB.token_is_vowel("ʰá", "en"))
+
+    def test_ignored_text_presentation_selector_after_phoneme(self):
+        self.assertEqual(RHYME_DB.tokenize_ipa("ˈa\ufe0et", "en"), ["ˈ", "a", "t"])
+
     def test_dash_is_not_silently_discarded(self):
         unknown = Counter()
         self.assertEqual(
@@ -251,6 +261,18 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                         self.assertIn(partner, matches)
                     finally:
                         connection.close()
+
+    def test_db_rejects_key_with_no_phoneme_and_keeps_previous_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.tsv"
+            database = Path(directory) / "en_fixture-release.db"
+            database.write_bytes(b"previous")
+            for ipa in ("//", "/ˈ/", "˥˦"):
+                with self.subTest(ipa=ipa):
+                    source.write_text(f'bad\t{json.dumps([ipa])}\n', encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "no phoneme"):
+                        RHYME_DB.build_database(source, database, "en", "fixture-release")
+                    self.assertEqual(database.read_bytes(), b"previous")
 
     def test_multiple_pronunciations_become_multiple_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:

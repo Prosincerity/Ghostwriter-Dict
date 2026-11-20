@@ -179,10 +179,9 @@ def inventory(lang_code: str) -> tuple[frozenset[str], tuple[str, ...]]:
 
 
 def is_postfix_modifier(character: str) -> bool:
-    return character in POSTFIX_MODIFIERS or unicodedata.category(character) in {
-        "Mn",
-        "Me",
-    }
+    if character in IGNORED_SEPARATORS:
+        return False
+    return character in POSTFIX_MODIFIERS or unicodedata.category(character) in {"Mn", "Me"}
 
 
 def tokenize_ipa(
@@ -190,9 +189,21 @@ def tokenize_ipa(
 ) -> list[str]:
     """Return phoneme/stress tokens, preserving and reporting unknown clusters."""
     ipa = unicodedata.normalize("NFC", ipa.strip())
-    vowels, candidates = inventory(lang_code)
-    del vowels  # Classification happens separately; candidates drive scanning.
+    _, candidates = inventory(lang_code)
     known_single_bases = {value for value in candidates if len(value) == 1}
+
+    def match_base(offset: int) -> Optional[str]:
+        match = next((value for value in candidates if ipa.startswith(value, offset)), None)
+        if match is not None or offset == len(ipa):
+            return match
+        # NFC may compose an inventory base and diacritic into one code point.
+        character = ipa[offset]
+        decomposed = unicodedata.normalize("NFD", character)
+        if (len(decomposed) > 1 and decomposed[0] in known_single_bases
+                and all(is_postfix_modifier(mark) for mark in decomposed[1:])):
+            return character
+        return None
+
     tokens: list[str] = []
     position = 0
     at_boundary = True
@@ -219,11 +230,8 @@ def tokenize_ipa(
             while modifier_end < len(ipa) and is_postfix_modifier(ipa[modifier_end]):
                 modifier_end += 1
             modifiers = ipa[position:modifier_end]
-            following = next(
-                (value for value in candidates if ipa.startswith(value, modifier_end)),
-                None,
-            )
-            if at_boundary and character in PREFIX_MODIFIERS and following is not None:
+            following = match_base(modifier_end) if at_boundary and character in PREFIX_MODIFIERS else None
+            if following is not None:
                 position = modifier_end + len(following)
                 token = modifiers + following
                 while position < len(ipa) and is_postfix_modifier(ipa[position]):
@@ -244,29 +252,8 @@ def tokenize_ipa(
             at_boundary = False
             continue
 
-        match = next(
-            (value for value in candidates if ipa.startswith(value, position)), None
-        )
+        match = match_base(position)
         if match is None:
-            # NFC retains precomposed phonemes such as á. When their NFD form
-            # is a known base plus diacritics, recognize the whole code point
-            # as that qualified phoneme rather than requiring an inventory row
-            # for every canonically equivalent spelling.
-            decomposed = unicodedata.normalize("NFD", character)
-            if (
-                len(decomposed) > 1
-                and decomposed[0] in known_single_bases
-                and all(is_postfix_modifier(value) for value in decomposed[1:])
-            ):
-                match = character
-                position += 1
-                while position < len(ipa) and is_postfix_modifier(ipa[position]):
-                    match += ipa[position]
-                    position += 1
-                tokens.append(match)
-                at_boundary = False
-                continue
-
             end = position + 1
             while end < len(ipa) and is_postfix_modifier(ipa[end]):
                 end += 1
@@ -360,6 +347,8 @@ def iter_rows(
                         f"{input_path}:{lines}: unrecognized IPA tokens "
                         f"for {word!r}, {ipa!r}: {dict(sorted(candidate_unknown.items()))}"
                     )
+                if not any(token not in STRESS_MARKERS | PROSODY_MARKERS for token in tokens):
+                    raise ValueError(f"{input_path}:{lines}: no phoneme for {word!r}, {ipa!r}")
                 ipa_reversed, assonance = derived_values(tokens, lang_code)
                 rows += 1
                 yield word, ipa, ipa_reversed, assonance
