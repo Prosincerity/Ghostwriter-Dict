@@ -108,7 +108,8 @@ download() {
 
     headers="$(curl --fail --head --location --retry 3 --silent --show-error "$url")"
     remote_etag="$(
-        awk '/^[Ee][Tt][Aa][Gg]:/ {
+        awk '/^HTTP\// { value = "" }
+            /^[Ee][Tt][Aa][Gg]:/ {
                 sub(/\r$/, "")
                 sub(/^[^:]*:[[:space:]]*/, "")
                 value = $0
@@ -116,7 +117,8 @@ download() {
             END { print value }' <<< "$headers"
     )"
     remote_last_modified="$(
-        awk '/^[Ll][Aa][Ss][Tt]-[Mm][Oo][Dd][Ii][Ff][Ii][Ee][Dd]:/ {
+        awk '/^HTTP\// { value = "" }
+            /^[Ll][Aa][Ss][Tt]-[Mm][Oo][Dd][Ii][Ff][Ii][Ee][Dd]:/ {
                 sub(/\r$/, "")
                 sub(/^[^:]*:[[:space:]]*/, "")
                 value = $0
@@ -172,17 +174,19 @@ download() {
         return 1
     fi
 
-    if [[ ! -s "$destination.part" ]]; then
+    if [[ ! -s "$destination.part" ]] || ! gzip -t -- "$destination.part"; then
         rm -f -- "$destination.part" "$etag_file.part"
-        echo "Downloaded archive is empty: $destination.part" >&2
+        echo "Downloaded archive is empty or invalid gzip: $destination.part" >&2
         return 1
     fi
 
     if [[ -f "$etag_file.part" ]]; then
         IFS= read -r downloaded_etag < "$etag_file.part" || true
     fi
-    if [[ -z "$downloaded_etag" ]]; then
-        downloaded_etag="$remote_etag"
+    if [[ -n "$remote_etag" && -n "$downloaded_etag" && "$downloaded_etag" != "$remote_etag" ]]; then
+        rm -f -- "$destination.part" "$etag_file.part"
+        echo "Archive changed between HEAD and download; retry the build: $url" >&2
+        return 1
     fi
 
     digest="$(sha256sum < "$destination.part")"

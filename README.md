@@ -7,7 +7,7 @@ and creates SQLite databases.
 
 ## Requirements
 
-- Python 3.10+, Bash, `flock`, and `curl`
+- Python 3.10+, Bash, `flock`, `gzip`, and `curl`
 - eSpeak NG for IPA generation and cleanup
 - Disk space for the archives and generated files; extraction can use several
   gigabytes of memory
@@ -31,7 +31,7 @@ HTTP `Last-Modified` date. To build from local archives without downloading:
   --skip-download --release-version kaikki-v20260902
 ```
 
-On repeat runs, the script checks remote ETags and local SHA-256 receipts unless downloads are skipped. The first online run after upgrading refreshes archives that lack receipts.
+On repeat runs, the script checks remote ETags and local SHA-256 receipts unless downloads are skipped. New downloads pass a streaming gzip integrity check before replacing local archives. The first online run after upgrading refreshes archives that lack receipts.
 After downloading, SHA-256 checkpoints verify each stage's inputs, relevant
 scripts, settings and outputs. States live under each language’s
 `reports/state/`; the six-file package has a shared checkpoint. G2P and
