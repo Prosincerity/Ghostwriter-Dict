@@ -172,6 +172,7 @@ def generate_language(
     lang_code: str,
     batch_size: int,
     total: int,
+    empty_words: TextIO | None = None,
 ) -> tuple[int, int]:
     generated = 0
     empty = 0
@@ -187,6 +188,10 @@ def generate_language(
             for batch in iter_word_batches(source, batch_size):
                 pronunciations = call_espeak(executable, lang_code, batch)
                 generated_now, empty_now = write_batch(batch, pronunciations, output)
+                if empty_now and empty_words is not None:
+                    for word, pronunciation in zip(batch, pronunciations):
+                        if not pronunciation.strip():
+                            print(word, file=empty_words)
                 generated += generated_now
                 empty += empty_now
                 processed += len(batch)

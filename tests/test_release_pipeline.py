@@ -35,7 +35,7 @@ done
             engine.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", ALLOW_FILE=str(root / "allow"))
             entries = [
-                ("en", "iPhone", ["/ˈma/"]), ("en", "Iphone", ["/ˈmi/", "/?bad/"]),
+                ("en", "iPhone", ["/ˈma/"]), ("en", "Iphone", ["/ˈmi/", "/?bad/", "\t/ˈma/"]),
                 ("en", "iphone", []), ("en", "A.B.D.", []), ("en", "bad\tword", []),
                 ("de", "ÖPNV", []), ("de", "Straße", ["/ˈma/"]), ("de", "gru\u0308n", []),
                 ("tr", "Işık", []), ("tr", "İzmir", ["?"]), ("tr", "İzmir", []),
@@ -71,6 +71,7 @@ done
             audit = out / "en/reports/cleaning"
             self.assertEqual(json.loads((audit / "entries_report.json").read_text())["counts"],
                              dict(input=5, removed=2, retained=1, merged=2))
+            self.assertEqual(json.loads((audit / "entries_report.json").read_text())["affected_entries"]["embedded_control"], 1)
             sums = (out / "SHA256SUMS").read_text().splitlines()
             self.assertEqual(len(sums), 6)
             for row in sums:

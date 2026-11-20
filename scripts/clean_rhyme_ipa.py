@@ -12,10 +12,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, TextIO
 
-from clean_rhyme_words import POLICY_VERSION, write_json_line
+from clean_rhyme_words import POLICY_VERSION, parse_word_row, write_json_line
 from generate_espeak_ipa import call_espeak, resolve_espeak
 from generate_rhyme_db import (
-    LANGUAGES, PROSODY_MARKERS, STRESS_MARKERS, parse_wordlist_line,
+    LANGUAGES, PROSODY_MARKERS, STRESS_MARKERS,
     token_is_vowel, tokenize_ipa,
 )
 
@@ -110,7 +110,7 @@ def clean_pronunciation(
     ipa: str, lang_code: str
 ) -> tuple[list[str], list[str], list[dict[str, object]]]:
     """Return valid normalized variants, transformation names, and rejects."""
-    if any(character in ipa for character in "\t\r\n"):
+    if any(unicodedata.category(character) == "Cc" for character in ipa):
         return [], [], [{"reason": "embedded_control"}]
     if "…" in ipa or "..." in ipa:
         return [], [], [{"reason": "incomplete_pronunciation"}]
@@ -466,7 +466,7 @@ def clean_ipa_wordlists(
                     with input_path.open("r", encoding="utf-8") as source:
                         for line_number, line in enumerate(source, start=1):
                             scanned_bytes += len(line.encode("utf-8"))
-                            word, ipas = parse_wordlist_line(input_path, line_number, line)
+                            word, ipas = parse_word_row(input_path, line_number, line)
                             if source_name == "wiktionary":
                                 staging.execute(
                                     "INSERT OR IGNORE INTO comparison_requests VALUES (?, ?)",

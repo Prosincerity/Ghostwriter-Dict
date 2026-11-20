@@ -48,7 +48,7 @@ def extract(archives, directories):
                             continue
                         word = entry.get("word")
                         fields = list(iter_ipa_fields(entry.get("sounds")))
-                        if isinstance(word, str):
+                        if progress.stream.isatty() and isinstance(word, str):
                             words[lang].add(word)
                         print(json.dumps([word, fields], separators=(",", ":")),
                               file=outputs[lang][int(not fields)])

@@ -5,6 +5,7 @@ import os
 import sqlite3
 from collections import Counter
 from contextlib import ExitStack
+from itertools import groupby
 from pathlib import Path
 
 from clean_rhyme_ipa import clean_pronunciation
@@ -33,6 +34,7 @@ def prepare(directory, lang):
     paths["audit"].parent.mkdir(parents=True, exist_ok=True)
     counts = Counter(input=0, removed=0, retained=0, merged=0)
     reasons = Counter()
+    affected_entries = Counter()
     with ExitStack() as cleanup:
         staging = directory / "prepare.sqlite.part"
         staging.unlink(missing_ok=True)
@@ -54,7 +56,13 @@ def prepare(directory, lang):
                 cleanup.callback(part.unlink, missing_ok=True)
                 out[name] = streams.enter_context(part.open("w", encoding="utf-8"))
 
+            entry_rules = set()
+
             def audit(word, reason, **details):
+                for rule in details.get("changes") or [reason]:
+                    if rule not in entry_rules:
+                        affected_entries[rule] += 1
+                        entry_rules.add(rule)
                 print(json.dumps(dict(word=word, reason=reason, **details)), file=out["audit"])
 
             inputs = raw_paths(directory, lang)
@@ -64,6 +72,7 @@ def prepare(directory, lang):
             for path in inputs:
                 with path.open(encoding="ascii") as entries:
                     for line in entries:
+                        entry_rules.clear()
                         consumed += len(line)
                         if counts["input"] % 1000 == 0:
                             progress.update(consumed, counts["input"], counts["retained"])
@@ -106,7 +115,11 @@ def prepare(directory, lang):
                                 reasons.update(transformations or ["normalize_ipa"])
                             for variant in valid:
                                 if any(mark in variant for mark in STRESS_MARKERS):
-                                    db.execute("INSERT OR IGNORE INTO ipa VALUES (?, 'clean', ?)", (word, variant))
+                                    new_variant = db.execute("INSERT OR IGNORE INTO ipa VALUES (?, 'clean', ?)",
+                                                             (word, variant)).rowcount
+                                    if not new_variant:
+                                        audit(word, "duplicate_normalized_ipa", ipa=ipa, normalized=variant)
+                                        reasons["duplicate_normalized_ipa"] += 1
                                 else:
                                     rejects.append(dict(reason="missing_stress_mark", details=dict(candidate=variant)))
                             for rejection in rejects:
@@ -114,21 +127,26 @@ def prepare(directory, lang):
                                 reasons[rejection["reason"]] += 1
                                 print(json.dumps([word, ipa, rejection]), file=out["repairs"])
 
-            for word, in db.execute("SELECT word FROM words ORDER BY word"):
-                groups = {}
-                for kind, value in db.execute("SELECT kind,value FROM ipa WHERE word=? ORDER BY kind,value", (word,)):
-                    groups.setdefault(kind, []).append(value)
-                if not groups:
+            rows = db.execute("""
+                SELECT words.word, ipa.kind, ipa.value FROM words LEFT JOIN ipa USING(word)
+                ORDER BY words.word, ipa.kind, ipa.value
+            """)
+            for (word, kind), variants in groupby(rows, key=lambda row: row[:2]):
+                if kind is None:
                     print(word, file=out["missing"])
-                for kind, values in groups.items():
+                else:
+                    values = [row[2] for row in variants]
                     print(word, json.dumps(values, ensure_ascii=False, separators=(",", ":")),
                           sep="\t", file=out[kind])
             print(f"# {lang} cleaning summary\n\nPolicy `{POLICY_VERSION}`\n", file=out["summary"])
-            for key, value in (*counts.items(), *sorted(reasons.items())):
+            for key, value in counts.items():
                 print(f"- {key}: {value}", file=out["summary"])
+            print("\n## Input entries affected by each rule\n", file=out["summary"])
+            for rule, number in sorted(affected_entries.items()):
+                print(f"- {rule}: {number}", file=out["summary"])
             print("\nSee [entry decisions](entries.jsonl) and [repair requests](repair_requests.jsonl).",
                   file=out["summary"])
-            json.dump(dict(policy_version=POLICY_VERSION, counts=counts, rule_counts=reasons),
+            json.dump(dict(policy_version=POLICY_VERSION, counts=counts, rule_counts=reasons, affected_entries=affected_entries),
                       out["report"], indent=2, sort_keys=True)
             previous = None
             for reason, encoded in db.execute("SELECT reason,original FROM excluded ORDER BY reason,original"):

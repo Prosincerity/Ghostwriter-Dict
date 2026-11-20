@@ -123,12 +123,21 @@ def build(args):
             generated = directory / f"wordlist_{lang}_espeak_ipa.txt"
             report = directory / "reports/ipa_generation/report.json"
 
+            empty_words = report.with_name("empty_words.txt")
+
             def generate():
                 count = g2p.validate_input(missing)
-                made, empty = g2p.generate_language(executable, missing, generated, lang, 10000, count)
+                report.parent.mkdir(parents=True, exist_ok=True)
+                part = empty_words.with_suffix(".txt.part")
+                try:
+                    with part.open("w", encoding="utf-8") as audit:
+                        made, empty = g2p.generate_language(executable, missing, generated, lang, 10000, count, audit)
+                    part.replace(empty_words)
+                finally:
+                    part.unlink(missing_ok=True)
                 write_json(report, dict(input_words=count, generated_words=made, empty_ipa_words=empty))
 
-            cache.run(generate, directory, "generate", [missing, *engine], [generated, report],
+            cache.run(generate, directory, "generate", [missing, *engine], [generated, report, empty_words],
                       ["generate_espeak_ipa"], version)
 
     databases = []
