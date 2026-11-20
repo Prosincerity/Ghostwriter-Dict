@@ -9,7 +9,8 @@ changes.
 - `scripts/download_and_process.sh`: complete archive-to-database build
 - `scripts/clean_and_build.sh`: cleanup and database rebuild from existing IPA
   lists; never downloads or extracts, but invokes eSpeak for IPA repairs
-- `scripts/extract_ipa.py`: canonical Wiktionary IPA/no-IPA extraction
+- `scripts/extract_ipa.py`: standalone legacy canonical export
+- `scripts/raw_entries.py`, `prepare_entries.py`, `pipeline.py`: lossless release extraction, audited preparation, and stage checkpoints
 - `scripts/generate_espeak_ipa.py`: missing-IPA generation
 - `scripts/clean_rhyme_words.py`: written-word cleanup and word audit reports
 - `scripts/clean_rhyme_ipa.py`: IPA validation, eSpeak repair, and IPA reports
@@ -35,15 +36,11 @@ changes.
 ## Data contracts
 
 Search every supplied Wiktionary edition for every requested language and
-route only by top-level `lang_code`. Normalize words and IPA to NFC before
-deduplication. Lowercase headwords with fewer than two uppercase letters,
-merging their distinct IPA values; preserve spellings with two or more uppercase
-letters. Read both `sounds[].ipa` and `sounds[].audio-ipa`, retaining distinct
-variants and rejecting only empty or complete placeholder values.
-
-Canonical lists preserve slang, phrases, punctuation, digits, and emoji.
-`--latin-headwords-only` rejects non-Latin letters but is not the product
-filter. Keep Wiktionary and eSpeak outputs separate, and preserve eSpeak's
+route only by top-level `lang_code`. Preserve original words and IPA fields in the release extractor's per-record
+JSONL streams. Apply the documented product rules only after extraction. Merge
+normalized headwords across editions and retain distinct pronunciation variants.
+The standalone legacy extractor keeps its original canonical export behavior,
+including the optional Latin-script-only filter. Keep Wiktionary and eSpeak outputs separate, and preserve eSpeak's
 adaptive isolation of anomalous multi-line output.
 
 IPA wordlists use one UTF-8 TSV row per word with a compact JSON array:
@@ -58,7 +55,7 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v14` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v15` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
 - All languages share the same curated Latin alphabet covering English,
@@ -82,8 +79,8 @@ separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
   eSpeak list. Audit each rejected candidate and replacement.
 - Compare each valid Wiktionary IPA to one batched eSpeak result per word using
   complete audited phoneme tokens. Record distance and stressed rhyme tails.
-  Default to report-only; moving extreme mismatches requires the explicit
-  opt-in flag and must preserve valid sibling pronunciations.
+  Direct validation defaults to report-only. Shell builds default to replacing
+  extreme mismatches and support `--report-only`. Preserve valid siblings.
 
 Reports must retain policy version, counts, reasons, original/normalized
 values, rejected characters or tokens, and grouped readable rejection lists.

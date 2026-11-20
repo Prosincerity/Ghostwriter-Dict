@@ -1,0 +1,58 @@
+# Cleaning rules for release builds
+
+Policy `rhyme-cleanup-v15`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
+
+## Record selection and IPA availability
+
+| Rule and scope | Condition, outcome and examples | Implementation |
+| --- | --- | --- |
+| Edition routing, all records | Read each archive in order. Use only the top-level language code. A Turkish entry in the German edition goes to Turkish. A French entry is outside the release. Count undecodable JSON and non-object records separately. | `raw_entries.extract` |
+| Raw field projection, all selected records | Preserve each record's word and every present `ipa` and `audio-ipa` field in sound order. Ignore non-object sound elements and unrelated fields. Missing fields go in the raw no-IPA stream. A field containing `"?"` still goes in the raw IPA stream. JSON escaping round-trips tabs, newlines and decomposed characters. | `raw_entries.extract`, `extract_ipa.iter_ipa_fields` |
+| Unusable IPA field, source | Ignore non-strings, lone surrogate code points and complete placeholders. Remove whitespace **for this test only**. The placeholder set is the empty string, `?`, `-`, `...`, `…`, `[]`, `//`, `[...]`, `[…]`, `/.../`, `/…/`, `[?]` and `/?/`. Keep `/a/` for validation. A retained word with only placeholders still goes to G2P. | `extract_ipa.is_usable_ipa`, `prepare_entries.prepare` |
+| Cross-record availability, both | Merge all records from both raw streams before deciding whether to generate. A missing-IPA record for `Iphone` plus a usable field for `iPhone` gives one source word. A non-placeholder field that fails validation follows the repair path. | `prepare_entries.prepare` |
+
+## Written forms
+
+These rules apply identically to records with and without pronunciations. The existing-list rebuild also applies them to previously generated headwords. Headword checks use `clean_rhyme_words.clean_headword`, `normalize_headword` and `headword_rejection`. Rejections record the first failed condition. Character rejections include code points and counts.
+
+| Rule | Trigger and examples |
+| --- | --- |
+| Text required | Reject a missing or non-string headword. Remove soft hyphens throughout, so `soft­ware` becomes `software`. Reject an empty result. |
+| Typographic translations | Convert ’, ‘ and ʼ to ASCII apostrophes. Keep Hawaiian ʻ (U+02BB) as a letter. Convert ‐, ‑, ‒, –, — and − to ASCII hyphens for consistent rejection. Convert ₀ through ₉ to ASCII digits, e.g. `CO₂` becomes `co2`. |
+| Canonical composition | Apply NFC after translations and again after lowercasing. For example, decomposed `grün` merges with `grün`. There is no accent stripping, transliteration or compatibility folding. |
+| Uppercase abbreviation | Before lowercasing, remove dots **for detection only**. Reject if the remaining string is alphabetic, uppercase and at least two characters long. Reject `ÖPNV`, `US` and `A.B.D.`. Keep mixed-case `iPhone` and title-case `Haus`. All-caps ordinary words also match. Digits and symbols prevent this specific test from matching, so `CO₂` and `R&B` follow the ordinary character rules. |
+| Shared alphabet | Allow ASCII letters and digits, Hawaiian ʻ and the explicit German, Turkish, French and loanword letters in `ACCEPTED_HEADWORD_LETTERS`. This is a curated set, not every Latin Unicode character. Accept `Straße`, `œuf` and `ağaç`. Reject Cyrillic, spaces, tabs, emoji, unlisted letters/marks and other symbols such as `$` or `*`. Preserve raw data for auditing. |
+| Dots and dashes | Reject anywhere, including the leading, medial and trailing positions. Reject `anti-`, `May–December` and `t.b.a.`. |
+| Single letter | Reject a one-character member of the letter inventory, including `ü`. Keep a single ASCII digit such as `7`. |
+| Apostrophe | Each ASCII apostrophe must touch a permitted letter or digit on at least one side. Keep `'cause`, `losin'` and `7'nci`. Reject an isolated apostrophe. Two consecutive apostrophes can pass when each has an exterior alphanumeric neighbor. |
+| Ampersand and slash | Both neighbors must be permitted letters. Keep `r&b` and `a/b`. Reject `&word`, `a/2` and trailing separators. A leading ampersand has its own rejection reason. |
+| Percent | Allow only in the final position immediately after an ASCII digit. Keep `10%` and `a2%`. Reject `%10` and `a%`. |
+| Plus | From the first plus to the end, require only plus signs and a letter immediately before the first plus. Keep `c++`. Reject `2+` and `a+b`. |
+| Lowercase | Apply Unicode lowercase to accepted forms. For Turkish, first map I to ı and İ to i, so `Işık` and `İzmir` become `ışık` and `izmir`. German `ß` stays distinct from `ss`. Check the resulting alphabet again, including combining marks introduced by lowercasing. |
+| Merge | Key by normalized word, then deduplicate each distinct source string and each normalized IPA variant independently. Identical variants collapse across records and editions. `Word` and `word` with different valid pronunciations contribute both to one word. |
+
+## IPA notation and eligibility
+
+These rules apply independently to each source or generated pronunciation. `clean_rhyme_ipa.clean_pronunciation` returns valid siblings alongside candidate-level rejections. A structural ambiguity in splitting or expanding a field rejects that field as a unit. Headword lowercasing never applies to IPA.
+
+| Rule | Trigger, examples and exceptions | Implementation |
+| --- | --- | --- |
+| Controls and fragments | Reject Unicode control characters, any ellipsis (… or three periods), and candidates containing ASCII hyphen, a soft hyphen or a dash in `FRAGMENT_DASHES`. Accept `/ˈma/`, reject `/-ma/` or IPA containing a tab. | `clean_pronunciation` |
+| Alternative boundaries | Split tilde inside a single wrapper, e.g. `/a~e/`, or between individually wrapped forms. Commas require individually wrapped parts, e.g. `/a/, [e]`. Reject empty parts, unwrapped `a~e` and ambiguous `/a,e/`. | `split_alternatives` |
+| Optional groups | Expand nonempty, non-nested parentheses into omitted and included forms, e.g. `/a(n)/`. Reject unbalanced, empty or nested groups. Limit distinct expansions to eight, including the running count of expanded alternatives in one input field. | `expand_optional_groups`, `clean_pronunciation` |
+| Transcription notation | Trim surrounding whitespace after checking controls. Convert ASCII apostrophe to primary stress and middle dot to syllable dot, then compose to NFC. Accept `/'ma·ma/` as `/ˈma.ma/`. Plain IPA, matched slashes and matched square brackets are supported. Reject stray, embedded or mismatched wrapper characters, e.g. `/ma]`. | `clean_pronunciation`, `validate_delimiters` |
+| Orthographic or mixed notation | Reject ASCII A–Z anywhere (including SAMPA-like uppercase symbols), Greek α or ε, and orthographic Turkish ı. Keep inventory IPA such as ɛ and ɯ. | `clean_pronunciation` |
+| Inventory | Match the longest audited phoneme for the language from `VOWELS` and `CONSONANTS`. Preserve affricates, diphthongs and attached diacritics as complete tokens. Accept precomposed characters decomposable into a known single base plus supported modifiers. Reject unknown clusters, e.g. the snowman in `/k☃t/`. | `generate_rhyme_db.tokenize_ipa` |
+| Modifier attachment | Attach listed spacing modifiers and Unicode Mn/Me marks to the preceding phoneme. At a boundary, a listed prefix modifier can attach to a following recognized phoneme. Reject detached modifiers. Examples include `n̩` and `kʰ`. | `tokenize_ipa`, `is_postfix_modifier` |
+| Boundaries and prosody | The tokenizer skips the exact separators in `IGNORED_SEPARATORS` (including space, syllable dot, delimiters, liaison and boundary marks). Notation validation runs first. Preserve listed stress, tone and intonation markers as tokens. Require at least one phoneme, so stress alone fails. These parsing rules do not remove markers from the stored IPA string. | `tokenize_ipa`, `clean_pronunciation` |
+| Stress position | Each primary or secondary stress marker needs a following syllabic nucleus before the next stress or end. Allow inventory vowels and consonants carrying the syllabic marks U+0329 or U+030D. Accept `/ˈn̩t/`, reject `/maˈ/`. | `is_syllabic_nucleus`, `clean_pronunciation` |
+| Source stress and repair | Queue malformed candidates and valid but unstressed source candidates for one eSpeak result per word. Keep valid stressed siblings. For example, `/ˈma/` and `/ma-/` retain the first and request a generated variant. Generated IPA must pass notation validation but may lack stress. A complete build fails if required repair leaves a source word with no valid pronunciation. | `prepare_entries.prepare`, `clean_ipa_wordlists` |
+| Missing-word generation | Use the matching eSpeak voice and batched input. Trim surplus empty separator lines, bisect misaligned batches and join a single word’s nonempty fragments with spaces. Strip and NFC-normalize generated text. The existing generator omits empty results. Full builds list those words under `reports/ipa_generation/empty_words.txt`. | `generate_espeak_ipa.call_espeak`, `generate_language`, `write_batch` |
+| Comparison and transfer | Compare each valid source variant to validated eSpeak candidates using Levenshtein distance over complete phonemes, excluding stress and prosody. Select the smallest distance divided by the longer length, then smallest edit count. Record the tail from the last stressed nucleus. Tail disagreement alone does not trigger transfer. Extreme requires at least five phonemes on each side, at least four edits and ratio ≥ the configured threshold (default 0.8). Four edits in five phonemes qualify, four in six do not at the default. Report extremes and ratios strictly above 0.5. Build defaults move only extreme variants with a validated replacement. Standalone validation and build option `--report-only` retain them. An unavailable comparison preserves valid source IPA. | `compare_pronunciations`, `is_extreme_mismatch`, `stressed_rhyme_tail`, `clean_ipa_wordlists` |
+| Output deduplication | Within each source, emit each word once with one copy of each distinct accepted IPA. A repair or mismatch transfer joins the generated list. A valid sibling may keep the same word in the source list. Two different written IPA transcriptions may yield identical search keys. | `clean_ipa_wordlists`, `generate_rhyme_db.build_database` |
+
+## Reading the audit
+
+In a complete build, `reports/cleaning/summary.md` counts raw input records, removed records, retained unique words and merged records. Input equals removed plus retained plus merged. Rule counts in the Markdown count affected input records at most once per rule. One record may trigger several rules. The JSON report also counts candidate-level occurrences. The Markdown groups rejected headwords, and `entries.jsonl` records normalization, collisions, original values and candidate rejections. The separate IPA changes, rejections and comparison reports describe repairs and final source transfers.
+
+The standalone legacy extractor still supports its original NFC, fewer-than-two-capitals lowercase and optional Latin-script-only canonical export. The release build uses raw projections instead. A rebuild from existing IPA lists can audit only information present in those lists.
