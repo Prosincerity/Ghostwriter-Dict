@@ -15,7 +15,7 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES
 
 
-POLICY_VERSION = "rhyme-cleanup-v15"
+POLICY_VERSION = "rhyme-cleanup-v16"
 BASE_HEADWORD_LETTERS = string.ascii_letters
 GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
 TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
@@ -161,10 +161,7 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
             ):
                 return {"reason": "misplaced_headword_separator", "details": {"character": character, "position": position}}
         elif character == HEADWORD_APOSTROPHE:
-            left_is_alphanumeric = position > 0 and word[position - 1] in ACCEPTED_HEADWORD_ALPHANUMERICS
-            right_is_alphanumeric = position + 1 < len(word) and word[position + 1] in ACCEPTED_HEADWORD_ALPHANUMERICS
-            if not (left_is_alphanumeric or right_is_alphanumeric):
-                return {"reason": "misplaced_headword_apostrophe", "details": {"character": character, "position": position}}
+            return {"reason": "headword_contains_apostrophe", "details": {"character": character, "position": position}}
         elif character == "/":
             if (
                 position == 0

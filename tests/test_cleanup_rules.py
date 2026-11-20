@@ -118,7 +118,7 @@ class HeadwordCleanupTest(unittest.TestCase):
         examples = {
             "en": "clichéstateoftheart",
             "de": "PokémonÜbergröße2026",
-            "tr": "hâlâQWXy7'nci",
+            "tr": "hâlâQWXy7nci",
         }
         for lang_code, word in examples.items():
             with self.subTest(lang_code=lang_code):
@@ -146,12 +146,9 @@ class HeadwordCleanupTest(unittest.TestCase):
                     )
                     self.assertTrue(rejection["details"]["invalid_characters"])
 
-    def test_audited_separators_elisions_and_okina_are_allowed(self):
+    def test_audited_separators_and_okina_are_allowed(self):
         for word in (
             "rock&roll",
-            "'cause",
-            "'Merica",
-            "don't",
             "Hawaiʻian",
             "AC/DC",
             "100%",
@@ -227,10 +224,13 @@ class HeadwordCleanupTest(unittest.TestCase):
             with self.subTest(word=word):
                 self.assertIsNotNone(WORDS.headword_rejection(word, "en"))
 
-    def test_internal_and_edge_apostrophes_are_allowed(self):
-        for word in ("don't", "'Merica", "losin'"):
-            with self.subTest(word=word):
-                self.assertIsNone(WORDS.headword_rejection(word, "en"))
+    def test_apostrophes_are_rejected_anywhere_after_normalization(self):
+        for lang in ("en", "de", "tr"):
+            for word in ("'a", "'a'", "'a'a", "'a'ā", "'abd", "don't", "losin’", "‘abc", "7ʼnci"):
+                with self.subTest(word=word, lang=lang):
+                    normalized, _, rejection = WORDS.clean_headword(word, lang)
+                    self.assertEqual(rejection["reason"], "headword_contains_apostrophe")
+                    self.assertEqual(normalized[rejection["details"]["position"]], "'")
 
     def test_search_oriented_headword_normalization(self):
         examples = {

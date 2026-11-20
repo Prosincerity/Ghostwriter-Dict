@@ -1,6 +1,6 @@
 # Cleaning rules for release builds
 
-Policy `rhyme-cleanup-v15`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
+Policy `rhyme-cleanup-v16`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
 
 ## Record selection and IPA availability
 
@@ -24,7 +24,7 @@ These rules apply identically to records with and without pronunciations. The ex
 | Shared alphabet | Allow ASCII letters and digits, Hawaiian ʻ and the explicit German, Turkish, French and loanword letters in `ACCEPTED_HEADWORD_LETTERS`. This is a curated set, not every Latin Unicode character. Accept `Straße`, `œuf` and `ağaç`. Reject Cyrillic, spaces, tabs, emoji, unlisted letters/marks and other symbols such as `$` or `*`. Preserve raw data for auditing. |
 | Dots and dashes | Reject anywhere, including the leading, medial and trailing positions. Reject `anti-`, `May–December` and `t.b.a.`. |
 | Single letter | Reject a one-character member of the letter inventory, including `ü`. Keep a single ASCII digit such as `7`. |
-| Apostrophe | Each ASCII apostrophe must touch a permitted letter or digit on at least one side. Keep `'cause`, `losin'` and `7'nci`. Reject an isolated apostrophe. Two consecutive apostrophes can pass when each has an exterior alphanumeric neighbor. |
+| Apostrophe | Reject a headword containing an ASCII apostrophe anywhere after typographic translation. Examples include `'abd`, `'a'ā`, `can't`, `losin’` and `7'nci`. Evaluate independently supplied spellings such as `abd` normally. Hawaiian ʻokina (U+02BB) remains a permitted letter. |
 | Ampersand and slash | Both neighbors must be permitted letters. Keep `r&b` and `a/b`. Reject `&word`, `a/2` and trailing separators. A leading ampersand has its own rejection reason. |
 | Percent | Allow only in the final position immediately after an ASCII digit. Keep `10%` and `a2%`. Reject `%10` and `a%`. |
 | Plus | From the first plus to the end, require only plus signs and a letter immediately before the first plus. Keep `c++`. Reject `2+` and `a+b`. |

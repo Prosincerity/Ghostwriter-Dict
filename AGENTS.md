@@ -55,13 +55,13 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v15` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v16` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
 - All languages share the same curated Latin alphabet covering English,
   German, Turkish, French, and common loanword letters, plus ASCII digits and
   Hawaiian ʻokina (`U+02BB`). Extend the shared alphabet deliberately.
-- Accept apostrophes attached to letters or digits. Reject dots and dashes
+- Reject apostrophes anywhere in headwords. Reject dots and dashes
   anywhere in headwords. Ampersands and slashes are valid only between letters.
   Percent signs may follow terminal numbers; one or more plus signs may follow
   terminal letters. Reject other punctuation, misplaced symbols, and

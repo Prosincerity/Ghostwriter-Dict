@@ -16,8 +16,8 @@ class WordCleanupTest(unittest.TestCase):
             source = root / "source.txt"
             output = root / "cleaned.txt"
             source.write_text(
-                'can’t\t["/kænt/"," /broken…/ "]\n'
-                'can\'t\t["/kɑnt/","/kænt/"]\n'
+                'Cant\t["/kænt/"," /broken…/ "]\n'
+                'cant\t["/kɑnt/","/kænt/"]\n'
                 'bad word\t["/bæd/"]\n',
                 encoding="utf-8",
             )
@@ -28,13 +28,13 @@ class WordCleanupTest(unittest.TestCase):
             )
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
-                'can\'t\t["/kænt/"," /broken…/ ","/kɑnt/"]\n',
+                'cant\t["/kænt/"," /broken…/ ","/kɑnt/"]\n',
             )
             reports = root / "reports" / "cleaning"
             changes = [json.loads(line) for line in
                        (reports / "cleaned_word_changes.jsonl").read_text(encoding="utf-8").splitlines()]
-            self.assertEqual(changes[0]["original_word"], "can’t")
-            self.assertEqual(changes[0]["normalized_word"], "can't")
+            self.assertEqual(changes[0]["original_word"], "Cant")
+            self.assertEqual(changes[0]["normalized_word"], "cant")
             rejected = json.loads((reports / "cleaned_rejected_words.json").read_text(encoding="utf-8"))
             self.assertEqual(rejected["groups"][0]["words"], ["bad word"])
             self.assertEqual(

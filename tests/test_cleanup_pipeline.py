@@ -45,8 +45,8 @@ class CleanupPipelineTest(unittest.TestCase):
             )
             self.assertEqual(wiki_output.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"))
             self.assertEqual(espeak_output.read_text(encoding="utf-8"), "")
-            self.assertIn("rhyme-cleanup-v15", word_result.stdout)
-            self.assertIn("rhyme-cleanup-v15", ipa_result.stdout)
+            self.assertIn("rhyme-cleanup-v16", word_result.stdout)
+            self.assertIn("rhyme-cleanup-v16", ipa_result.stdout)
             self.assertTrue(WORDS.output_paths(wiki_words)["report"].is_file())
             self.assertTrue(IPA.output_paths(wiki_output, espeak_output)["report"].is_file())
 
@@ -101,7 +101,7 @@ class CleanupPipelineTest(unittest.TestCase):
                 )
             self.assertTrue(call.called)
             word_rows = read_rows(wiki_words)
-            self.assertEqual(word_rows["can't"], ["/kænt/", "/kɑnt/"])
+            self.assertNotIn("can't", word_rows)
             self.assertEqual(word_rows["variants"], ["/'vɛəriənts/", "/bad…/", "/vɛər(i)ənts/"])
             wiki_rows = read_rows(wiki_output)
             espeak_rows = read_rows(espeak_output)
@@ -110,28 +110,27 @@ class CleanupPipelineTest(unittest.TestCase):
                          "inter-galactic", "A.B.D.", "May-December",
                          "Dungeons & Dragons", "$hit", "ü", "tw*t"):
                 self.assertNotIn(word, word_rows)
-            for word in ("7'nci", "CO2", "software", "Word2026", "losin'", "'Murica",
-                         "Hawaiʻian"):
+            for word in ("CO2", "software", "Word2026", "Hawaiʻian"):
                 self.assertIn(word.lower(), wiki_rows)
             self.assertNotIn("can't", wiki_rows)
             self.assertNotIn("'cause", wiki_rows)
             self.assertNotIn("tones", wiki_rows)
             self.assertEqual(wiki_rows["variants"], ["/ˈvɛəriənts/"])
             self.assertIn("variants", espeak_rows)
-            self.assertIn("can't", espeak_rows)
-            self.assertIn("'cause", espeak_rows)
+            self.assertNotIn("can't", espeak_rows)
+            self.assertNotIn("'cause", espeak_rows)
             self.assertIn("tones", espeak_rows)
             self.assertIn("already", espeak_rows)
-            self.assertEqual(word_report["counts"]["rejected_words"], 15)
-            self.assertEqual(word_report["policy_version"], "rhyme-cleanup-v15")
-            self.assertEqual(ipa_report["policy_version"], "rhyme-cleanup-v15")
+            self.assertEqual(word_report["counts"]["rejected_words"], 21)
+            self.assertEqual(word_report["policy_version"], "rhyme-cleanup-v16")
+            self.assertEqual(ipa_report["policy_version"], "rhyme-cleanup-v16")
 
             word_paths = WORDS.output_paths(wiki_words)
             rejected_words = json.loads(word_paths["rejected_words"].read_text(encoding="utf-8"))
             groups = {group["reason"]: group for group in rejected_words["groups"]}
             self.assertEqual(set(groups), {
                 "disallowed_headword_characters", "headword_contains_dash_or_dot",
-                "single_letter_headword", "uppercase_abbreviation",
+                "single_letter_headword", "uppercase_abbreviation", "headword_contains_apostrophe",
             })
             self.assertEqual(groups["disallowed_headword_characters"]["words"], [
                 "♥-lichen", "Victory Day", "Dungeons & Dragons", "$hit", "tw*t",
@@ -144,7 +143,7 @@ class CleanupPipelineTest(unittest.TestCase):
             self.assertEqual(
                 {json.loads(line)["original_word"] for line in
                  word_paths["word_changes"].read_text(encoding="utf-8").splitlines()},
-                {"Word2026", "'Murica", "Hawaiʻian", "can’t", "CO₂", "soft\N{SOFT HYPHEN}ware", "losin’", "May–December"},
+                {"Word2026", "Hawaiʻian", "can’t", "CO₂", "soft\N{SOFT HYPHEN}ware", "losin’", "May–December"},
             )
 
             ipa_paths = IPA.output_paths(wiki_output, espeak_output)
