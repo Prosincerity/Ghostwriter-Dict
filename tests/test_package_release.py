@@ -35,24 +35,29 @@ class PackageReleaseTest(unittest.TestCase):
                     archive.write_bytes(old_archives[archive])
             manifest = root / "out" / "SHA256SUMS"
             manifest.write_text("old manifest\n", encoding="ascii")
-            second_archive = sorted(old_archives)[1]
+            # Include a newly-created destination and an overwritten one in
+            # the rollback before the third replacement fails.
+            new_archive, _, failing_archive = sorted(old_archives)[:3]
+            new_archive.unlink()
+            del old_archives[new_archive]
             real_replace = os.replace
             failed = False
 
-            def fail_second_publish(source, destination):
+            def fail_publish(source, destination):
                 nonlocal failed
-                if Path(destination) == second_archive and not failed:
+                if Path(destination) == failing_archive and not failed:
                     failed = True
                     raise OSError("publish failed")
                 return real_replace(source, destination)
 
             with mock.patch.object(package, "PROJECT_DIR", root), \
                  mock.patch.object(sys, "argv", [str(SCRIPT), "--release-version", RELEASE]), \
-                 mock.patch.object(package.os, "replace", side_effect=fail_second_publish):
+                 mock.patch.object(os, "replace", side_effect=fail_publish):
                 with self.assertRaisesRegex(OSError, "publish failed"):
                     package.main()
 
             self.assertTrue(failed)
+            self.assertFalse(new_archive.exists())
             self.assertEqual(manifest.read_text(encoding="ascii"), "old manifest\n")
             for archive, previous in old_archives.items():
                 self.assertEqual(archive.read_bytes(), previous)
@@ -64,6 +69,7 @@ class PackageReleaseTest(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy2(SCRIPT, scripts / SCRIPT.name)
+            shutil.copy2(SCRIPT.with_name("build_reports.py"), scripts)
             for lang in ("en", "de", "tr"):
                 directory = root / "out" / lang
                 directory.mkdir(parents=True)
@@ -100,6 +106,7 @@ class PackageReleaseTest(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy2(SCRIPT, scripts / SCRIPT.name)
+            shutil.copy2(SCRIPT.with_name("build_reports.py"), scripts)
             directory = root / "out" / "en"
             directory.mkdir(parents=True)
             archive = directory / f"en_{RELEASE}.db.gz"

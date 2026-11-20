@@ -14,7 +14,6 @@ Both uncompressed .jsonl and gzip-compressed .jsonl.gz inputs are supported.
 import argparse
 import gzip
 import json
-import os
 import re
 import sys
 import unicodedata
@@ -23,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Iterable, Mapping, TextIO
 
-from build_reports import archive_sources, sha256_file, write_json
+from build_reports import archive_sources, publish_files, sha256_file, write_json
 
 
 # Square brackets and slashes are valid IPA delimiters. Only values whose
@@ -173,8 +172,7 @@ def write_language_wordlists(
                 if word not in word_ipas:
                     output.write(f"{word}\n")
 
-        os.replace(ipa_part, ipa_path)
-        os.replace(noipa_part, noipa_path)
+        publish_files([(ipa_part, ipa_path), (noipa_part, noipa_path)])
     except BaseException:
         for part_path in part_paths:
             part_path.unlink(missing_ok=True)

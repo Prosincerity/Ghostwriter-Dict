@@ -1,10 +1,65 @@
 """Small atomic build reports and archive fingerprints shared by pipeline steps."""
 
 import argparse
+import errno
 import hashlib
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
+
+
+def staged_file(destination: Path) -> Path:
+    descriptor, name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
+    )
+    os.close(descriptor)
+    return Path(name)
+
+
+def backup_existing(destination: Path) -> Path | None:
+    if not destination.exists():
+        return None
+    backup = staged_file(destination)
+    backup.unlink()
+    try:
+        try:
+            os.link(destination, backup)
+        except OSError as error:
+            if error.errno not in (errno.EOPNOTSUPP, errno.EPERM, errno.EMLINK):
+                raise
+            shutil.copy2(destination, backup)
+    except BaseException:
+        backup.unlink(missing_ok=True)
+        raise
+    return backup
+
+
+def publish_files(files: list[tuple[Path, Path]]) -> None:
+    """Replace a related set of staged files, rolling back on a publish error."""
+    backups = {}
+    published = []
+    try:
+        for _, destination in files:
+            backups[destination] = backup_existing(destination)
+        for part, destination in files:
+            os.replace(part, destination)
+            published.append(destination)
+    except BaseException:
+        # Keep backups needing restoration out of the cleanup path, even if a
+        # second filesystem failure interrupts rollback itself.
+        restore = [(dst, backups.pop(dst)) for dst in reversed(published)]
+        for destination, backup in restore:
+            if backup is None:
+                destination.unlink(missing_ok=True)
+            else:
+                os.replace(backup, destination)
+        raise
+    finally:
+        for backup in backups.values():
+            if backup is not None:
+                backup.unlink(missing_ok=True)
 
 
 def sha256_file(path: Path) -> str:

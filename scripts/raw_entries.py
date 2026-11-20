@@ -1,11 +1,11 @@
 """Lossless projection of selected Wiktextract entries, streamed once across editions."""
 
 import json
-import os
 from collections import Counter
 from contextlib import ExitStack
 from pathlib import Path
 
+from build_reports import publish_files
 from extract_ipa import ProgressBar, input_position, iter_ipa_fields, open_jsonl
 
 
@@ -55,8 +55,6 @@ def extract(archives, directories):
                         counts[lang] += 1
                 completed += archive.stat().st_size
                 progress.update(completed, counts["records_read"], {k: len(v) for k, v in words.items()})
-        for pair in paths.values():
-            for path in pair:
-                os.replace(f"{path}.part", path)
+        publish_files([(Path(f"{path}.part"), path) for pair in paths.values() for path in pair])
     progress.finish()
     return counts

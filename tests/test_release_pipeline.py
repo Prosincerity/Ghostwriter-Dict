@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
@@ -84,7 +85,7 @@ done
                 self.assertEqual(hashlib.sha256(data).hexdigest(), digest)
                 db = (out / name).with_suffix("")
                 self.assertEqual(gzip.decompress(data), db.read_bytes())
-                with sqlite3.connect(db) as connection:
+                with closing(sqlite3.connect(db)) as connection:
                     self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
             self.assertNotIn("Building ", run())
             path = out / "tr/wordlist_tr_espeak_ipa.txt"

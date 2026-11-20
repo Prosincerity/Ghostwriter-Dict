@@ -121,12 +121,12 @@ class ExtractionHelperTest(unittest.TestCase):
             word_ipas = {"word": {"/wɜːd/": None}}
             real_replace = os.replace
 
-            def fail_first_replace(source, destination):
-                if Path(destination) == ipa_path:
+            def fail_second_replace(source, destination):
+                if Path(destination) == noipa_path:
                     raise OSError("replace failed")
                 return real_replace(source, destination)
 
-            with mock.patch.object(EXTRACT.os, "replace", side_effect=fail_first_replace):
+            with mock.patch.object(os, "replace", side_effect=fail_second_replace):
                 with self.assertRaisesRegex(OSError, "replace failed"):
                     EXTRACT.write_language_wordlists(
                         language_dir, "en", words, word_ipas

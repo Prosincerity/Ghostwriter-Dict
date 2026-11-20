@@ -2,13 +2,13 @@
 
 import html
 import json
-import os
 import sqlite3
 from collections import Counter
 from contextlib import ExitStack
 from itertools import groupby
 from pathlib import Path
 
+from build_reports import publish_files
 from clean_rhyme_ipa import clean_pronunciation
 from clean_rhyme_words import POLICY_VERSION, ProgressBar, clean_headword
 from extract_ipa import is_usable_ipa
@@ -160,5 +160,4 @@ def prepare(directory, lang):
                     printable = value.encode("utf-8", "backslashreplace").decode()
                     out["summary"].write(html.escape(printable, quote=False))
                 print("</p>", file=out["summary"])
-        for path in paths.values():
-            os.replace(f"{path}.part", path)
+        publish_files([(Path(f"{path}.part"), path) for path in paths.values()])

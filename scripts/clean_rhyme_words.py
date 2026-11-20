@@ -3,7 +3,6 @@
 
 import argparse
 import json
-import os
 import sqlite3
 import string
 import sys
@@ -12,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, TextIO
 
+from build_reports import publish_files
 from generate_rhyme_db import LANGUAGES
 
 
@@ -276,8 +276,7 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
         with parts["report"].open("w", encoding="utf-8", newline="\n") as output:
             json.dump(report, output, ensure_ascii=False, indent=2, sort_keys=True)
             output.write("\n")
-        for name, path in paths.items():
-            os.replace(parts[name], path)
+        publish_files([(parts[name], path) for name, path in paths.items()])
         return report
     except BaseException:
         if staging is not None:
