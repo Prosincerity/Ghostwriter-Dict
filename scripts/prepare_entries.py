@@ -1,5 +1,6 @@
 """Prepare normalized source, missing-IPA and repair inputs before invoking eSpeak."""
 
+import html
 import json
 import os
 import sqlite3
@@ -148,13 +149,16 @@ def prepare(directory, lang):
                   file=out["summary"])
             json.dump(dict(policy_version=POLICY_VERSION, counts=counts, rule_counts=reasons, affected_entries=affected_entries),
                       out["report"], indent=2, sort_keys=True)
-            previous = None
-            for reason, encoded in db.execute("SELECT reason,original FROM excluded ORDER BY reason,original"):
-                if reason != previous:
-                    print(f"\n## {reason}\n", file=out["summary"])
-                    previous = reason
-                # Indented JSON strings safely display Markdown syntax and control characters.
-                value = json.dumps(json.loads(encoded), ensure_ascii=False)
-                print("    " + value.encode("utf-8", "backslashreplace").decode(), file=out["summary"])
+            excluded = db.execute("SELECT reason,original FROM excluded ORDER BY reason,original")
+            for reason, entries in groupby(excluded, key=lambda row: row[0]):
+                print(f"\n## {reason}\n", file=out["summary"])
+                out["summary"].write("<p>")
+                for index, (_, encoded) in enumerate(entries):
+                    if index:
+                        out["summary"].write(", ")
+                    value = json.dumps(json.loads(encoded), ensure_ascii=False)
+                    printable = value.encode("utf-8", "backslashreplace").decode()
+                    out["summary"].write(html.escape(printable, quote=False))
+                print("</p>", file=out["summary"])
         for path in paths.values():
             os.replace(f"{path}.part", path)

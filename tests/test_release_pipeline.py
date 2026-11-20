@@ -37,6 +37,7 @@ done
             entries = [
                 ("en", "iPhone", ["/ˈma/"]), ("en", "Iphone", ["/ˈmi/", "/?bad/", "\t/ˈma/"]),
                 ("en", "iphone", []), ("en", "A.B.D.", []), ("en", "bad\tword", []),
+                ("en", "rock&roll", ["/ˈma/"]), ("en", "a/b", []), ("en", "<a,b>", []),
                 ("de", "ÖPNV", []), ("de", "Straße", ["/ˈma/"]), ("de", "gru\u0308n", []),
                 ("tr", "Işık", []), ("tr", "İzmir", ["?"]), ("tr", "İzmir", []),
             ]
@@ -70,8 +71,10 @@ done
             self.assertEqual((out / "en/wordlist_en_espeak_rhyme_eligible.txt").read_text(), 'iphone\t["ˈma"]\n')
             audit = out / "en/reports/cleaning"
             self.assertEqual(json.loads((audit / "entries_report.json").read_text())["counts"],
-                             dict(input=5, removed=2, retained=1, merged=2))
+                             dict(input=8, removed=5, retained=1, merged=2))
             self.assertEqual(json.loads((audit / "entries_report.json").read_text())["affected_entries"]["embedded_control"], 1)
+            summary = (audit / "summary.md").read_text()
+            self.assertIn('## disallowed_headword_characters\n\n<p>"&lt;a,b&gt;", "a/b", "bad\\tword", "rock&amp;roll"</p>', summary)
             sums = (out / "SHA256SUMS").read_text().splitlines()
             self.assertEqual(len(sums), 6)
             for row in sums:
