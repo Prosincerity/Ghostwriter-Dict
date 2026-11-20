@@ -56,24 +56,9 @@ class CleanAndBuildTest(unittest.TestCase):
             )
 
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 19)
-            self.assertEqual(
-                sum("clean_rhyme_words.py" in call for call in calls), 6
-            )
-            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
-            self.assertTrue(all(
-                "--replace-extreme-mismatches --extreme-distance 0.9" in call
-                for call in calls if "clean_rhyme_ipa.py" in call
-            ))
-            self.assertEqual(sum("generate_rhyme_db.py" in call for call in calls), 6)
-            self.assertEqual(
-                calls[-1],
-                f"{scripts_dir / 'package_release.py'} --release-version {release}",
-            )
-            self.assertTrue(all("extract_ipa.py" not in call for call in calls))
-            self.assertTrue(
-                all("generate_espeak_ipa.py" not in call for call in calls)
-            )
+            self.assertEqual(calls, [
+                f"{scripts_dir / 'pipeline.py'} --release-version {release} --replace-extreme-mismatches --extreme-distance 0.9"
+            ])
             self.assertIn(f"for {release}", result.stdout)
 
             call_log.write_text("", encoding="utf-8")
@@ -82,11 +67,7 @@ class CleanAndBuildTest(unittest.TestCase):
                 check=True, capture_output=True, text=True, env=environment,
             )
             audit_calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in audit_calls), 3)
-            self.assertTrue(all(
-                "--replace-extreme-mismatches" not in call
-                for call in audit_calls if "clean_rhyme_ipa.py" in call
-            ))
+            self.assertNotIn("--replace-extreme-mismatches", audit_calls[-1])
 
     def test_requires_a_valid_release_version(self):
         missing = subprocess.run(

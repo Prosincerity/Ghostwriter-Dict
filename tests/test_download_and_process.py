@@ -90,41 +90,11 @@ class DownloadAndProcessTest(unittest.TestCase):
             release = "kaikki-v20260902"
             self.assertIn(f"Kaikki release: {release}", result.stdout)
             calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(calls), 22)
+            self.assertEqual(len(calls), 2)
             self.assertIn("build_reports.py downloading", calls[0])
-            self.assertIn("extract_ipa.py", calls[1])
-            self.assertNotIn("--latin-headwords-only", calls[1])
-            self.assertIn("--reuse-if-current", calls[1])
-            self.assertIn("generate_espeak_ipa.py", calls[2])
-            for archive in ("de-extract.jsonl.gz", "tr-extract.jsonl.gz",
-                            "raw-wiktextract-data.jsonl.gz"):
-                self.assertIn(f"--source-archive {root / 'raw' / archive}", calls[2])
-            self.assertEqual(sum("clean_rhyme_words.py" in call for call in calls), 6)
-            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in calls), 3)
-            self.assertEqual(
-                calls[-1],
-                f"{scripts_dir / 'package_release.py'} --release-version {release}",
-            )
-            self.assertTrue(all(
-                "--replace-extreme-mismatches --extreme-distance 0.9" in call
-                for call in calls if "clean_rhyme_ipa.py" in call
-            ))
-            for lang_code in ("en", "de", "tr"):
-                self.assertTrue(
-                    any(
-                        f"/{lang_code}_{release}.db" in call
-                        for call in calls
-                    )
-                )
-                self.assertTrue(
-                    any(
-                        f"/{lang_code}_espeak_{release}.db" in call
-                        for call in calls
-                    )
-                )
-                self.assertIn(
-                    f"{lang_code}_espeak_{release}.db.gz", result.stdout
-                )
+            self.assertIn(f"pipeline.py --release-version {release}", calls[1])
+            self.assertIn("--replace-extreme-mismatches --extreme-distance 0.9", calls[1])
+            self.assertEqual(calls[1].count("--archive"), 3)
             self.assertEqual(len(list((root / "raw").glob("*.jsonl.gz"))), 3)
 
             call_log.write_text("", encoding="utf-8")
@@ -133,11 +103,7 @@ class DownloadAndProcessTest(unittest.TestCase):
                 check=True, capture_output=True, text=True, env=environment,
             )
             audit_calls = call_log.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(sum("clean_rhyme_ipa.py" in call for call in audit_calls), 3)
-            self.assertTrue(all(
-                "--replace-extreme-mismatches" not in call
-                for call in audit_calls if "clean_rhyme_ipa.py" in call
-            ))
+            self.assertNotIn("--replace-extreme-mismatches", audit_calls[-1])
 
     def test_skip_download_requires_an_explicit_release(self):
         result = subprocess.run(
