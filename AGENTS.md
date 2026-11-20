@@ -55,7 +55,7 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v16` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v17` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
 - All languages share the same curated Latin alphabet covering English,
@@ -63,8 +63,7 @@ separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
   Hawaiian ʻokina (`U+02BB`). Extend the shared alphabet deliberately.
 - Reject apostrophes anywhere in headwords. Reject dots and dashes
   anywhere in headwords. Ampersands and slashes are valid only between letters.
-  Percent signs may follow terminal numbers; one or more plus signs may follow
-  terminal letters. Reject other punctuation, misplaced symbols, and
+  Reject percent and plus signs anywhere. Reject other punctuation, misplaced symbols, and
   single-letter headwords.
 - Normalize typographic apostrophes, Unicode dashes, subscript digits, and soft
   hyphens. The result must be one token; reject spaces and unsupported symbols.

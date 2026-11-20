@@ -151,8 +151,6 @@ class HeadwordCleanupTest(unittest.TestCase):
             "rock&roll",
             "Hawaiʻian",
             "AC/DC",
-            "100%",
-            "C++",
         ):
             with self.subTest(word=word):
                 self.assertIsNone(WORDS.headword_rejection(word, "en"))
@@ -160,7 +158,7 @@ class HeadwordCleanupTest(unittest.TestCase):
     def test_leading_special_characters_are_rejected(self):
         examples = {
             "$hit": "disallowed_headword_characters",
-            "%word": "misplaced_headword_symbol",
+            "%word": "disallowed_headword_characters",
             "-casting": "headword_contains_dash_or_dot",
         }
         for word, reason in examples.items():
@@ -202,8 +200,18 @@ class HeadwordCleanupTest(unittest.TestCase):
                 rejection = WORDS.headword_rejection(word, "en")
                 self.assertEqual(rejection["reason"], "disallowed_headword_characters")
 
-    def test_audited_symbols_must_use_valid_positions(self):
-        for word in ("AC/", "/DC", "100%off", "%100", "C+17", "+C"):
+    def test_percent_and_plus_are_rejected_in_every_position(self):
+        for lang in ("en", "de", "tr"):
+            for symbol in ("%", "+", "％", "＋"):
+                for word in (symbol, symbol + "abc", "ab" + symbol + "cd",
+                             "100" + symbol, "C" + symbol * 2):
+                    with self.subTest(lang=lang, word=word):
+                        _, _, rejection = WORDS.clean_headword(word, lang)
+                        self.assertEqual(rejection["reason"], "disallowed_headword_characters")
+                        self.assertEqual(rejection["details"]["invalid_characters"][0]["character"], symbol)
+
+    def test_slashes_must_be_between_letters(self):
+        for word in ("AC/", "/DC", "a/2"):
             with self.subTest(word=word):
                 rejection = WORDS.headword_rejection(word, "en")
                 self.assertEqual(rejection["reason"], "misplaced_headword_symbol")

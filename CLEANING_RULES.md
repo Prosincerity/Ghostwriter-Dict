@@ -1,6 +1,6 @@
 # Cleaning rules for release builds
 
-Policy `rhyme-cleanup-v16`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
+Policy `rhyme-cleanup-v17`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
 
 ## Record selection and IPA availability
 
@@ -26,8 +26,7 @@ These rules apply identically to records with and without pronunciations. The ex
 | Single letter | Reject a one-character member of the letter inventory, including `ü`. Keep a single ASCII digit such as `7`. |
 | Apostrophe | Reject a headword containing an ASCII apostrophe anywhere after typographic translation. Examples include `'abd`, `'a'ā`, `can't`, `losin’` and `7'nci`. Evaluate independently supplied spellings such as `abd` normally. Hawaiian ʻokina (U+02BB) remains a permitted letter. |
 | Ampersand and slash | Both neighbors must be permitted letters. Keep `r&b` and `a/b`. Reject `&word`, `a/2` and trailing separators. A leading ampersand has its own rejection reason. |
-| Percent | Allow only in the final position immediately after an ASCII digit. Keep `10%` and `a2%`. Reject `%10` and `a%`. |
-| Plus | From the first plus to the end, require only plus signs and a letter immediately before the first plus. Keep `c++`. Reject `2+` and `a+b`. |
+| Percent and plus | Reject either character anywhere in a headword, including `10%`, `%10`, `c++` and `a+b`. Plain `10` remains eligible. Only ampersands and slashes may occur as punctuation in an eligible headword. |
 | Lowercase | Apply Unicode lowercase to accepted forms. For Turkish, first map I to ı and İ to i, so `Işık` and `İzmir` become `ışık` and `izmir`. German `ß` stays distinct from `ss`. Check the resulting alphabet again, including combining marks introduced by lowercasing. |
 | Merge | Key by normalized word, then deduplicate each distinct source string and each normalized IPA variant independently. Identical variants collapse across records and editions. `Word` and `word` with different valid pronunciations contribute both to one word. |
 
