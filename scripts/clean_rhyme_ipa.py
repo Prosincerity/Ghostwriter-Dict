@@ -467,6 +467,7 @@ def clean_ipa_wordlists(
                         for line_number, line in enumerate(source, start=1):
                             scanned_bytes += len(line.encode("utf-8"))
                             word, ipas = parse_word_row(input_path, line_number, line)
+                            word = unicodedata.normalize("NFC", word)
                             if source_name == "wiktionary":
                                 staging.execute(
                                     "INSERT OR IGNORE INTO comparison_requests VALUES (?, ?)",

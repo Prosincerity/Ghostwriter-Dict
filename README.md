@@ -31,11 +31,11 @@ HTTP `Last-Modified` date. To build from local archives without downloading:
   --skip-download --release-version kaikki-v20260902
 ```
 
-On repeat runs, the script checks remote ETags unless downloads are skipped.
+On repeat runs, the script checks remote ETags and local SHA-256 receipts unless downloads are skipped. The first online run after upgrading refreshes archives that lack receipts.
 After downloading, SHA-256 checkpoints verify each stage's inputs, relevant
 scripts, settings and outputs. States live under each language’s
 `reports/state/`; the six-file package has a shared checkpoint. G2P and
-validation additionally fingerprint the eSpeak executable, version and files
+validation additionally fingerprint the eSpeak executable, version, shared libraries resolved by `ldd` on Linux, and files
 under the data directory reported by eSpeak. Each shell entry point locks the
 output directory for the build. Retry the same command after an interruption.
 A changed upstream file reruns its consumers. If recomputation yields identical

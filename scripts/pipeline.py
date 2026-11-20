@@ -3,6 +3,7 @@
 import argparse
 import json
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -70,6 +71,16 @@ class Stages:
 def engine_inputs(executable):
     version = subprocess.check_output([executable, "--version"], text=True, stdin=subprocess.DEVNULL)
     files = [Path(executable)]
+    # Distribution builds commonly keep the synthesis implementation in a
+    # shared library while shipping the same small CLI across updates.
+    with Path(executable).open("rb") as binary:
+        elf = binary.read(4) == b"\x7fELF"
+    if elf and shutil.which("ldd"):
+        linked = subprocess.run(["ldd", executable], text=True, capture_output=True)
+        for path in re.findall(r"(/[^\n]+?)\s+\(0x[0-9a-fA-F]+\)", linked.stdout):
+            library = Path(path)
+            if library.is_file():
+                files.append(library)
     data = re.search(r"Data at:\s*(.+)", version)
     if data:
         directory = Path(data[1].strip())
@@ -84,6 +95,12 @@ def build(args):
     dirs = {lang: OUT / lang for lang in LANGUAGES}
     cleaning_code = ["prepare_entries", "clean_rhyme_words", "clean_rhyme_ipa",
                      "generate_rhyme_db", "extract_ipa", "raw_entries"]
+    if args.verified_archive_sha256:
+        # The shell hashes the actual files under the build lock. Reuse that
+        # in-process evidence to avoid a second full read of every archive.
+        if len(args.verified_archive_sha256) != len(args.archive or []):
+            raise ValueError("one verified digest per downloaded archive is required")
+        cache.digests.update(zip(args.archive, args.verified_archive_sha256))
     if args.archive:
         pending = {}
         for lang, directory in dirs.items():
@@ -193,6 +210,7 @@ def build(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, action="append")
+    parser.add_argument("--verified-archive-sha256", action="append", help=argparse.SUPPRESS)
     parser.add_argument("--release-version", required=True)
     parser.add_argument("--replace-extreme-mismatches", action="store_true")
     parser.add_argument("--extreme-distance", type=float, default=0.8)

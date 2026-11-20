@@ -17,6 +17,7 @@ RELEASE_VERSION=""
 SKIP_DOWNLOAD=false
 REPLACE_EXTREME_MISMATCHES=true
 EXTREME_DISTANCE=""
+ARCHIVE_HASH_OPTIONS=()
 
 usage() {
     cat <<EOF
@@ -102,6 +103,8 @@ download() {
     local remote_release_date
     local saved_etag=""
     local downloaded_etag=""
+    local receipt="${destination}.sha256"
+    local digest="" saved_digest=""
 
     headers="$(curl --fail --head --location --retry 3 --silent --show-error "$url")"
     remote_etag="$(
@@ -139,9 +142,18 @@ download() {
     fi
 
     if [[ -s "$destination" && -n "$remote_etag" && "$saved_etag" == "$remote_etag" ]]; then
-        echo "Up to date: $(basename -- "$destination") ($remote_etag)"
-        printf -v "$status_variable" '%s' 'reused'
-        return 0
+        if [[ -f "$receipt" ]]; then
+            IFS= read -r saved_digest < "$receipt" || true
+            digest="$(sha256sum < "$destination")"
+            digest="${digest%% *}"
+            if [[ "$saved_digest" == "$digest $remote_etag" ]]; then
+                echo "Up to date: $(basename -- "$destination") ($remote_etag)"
+                ARCHIVE_HASH_OPTIONS+=(--verified-archive-sha256 "$digest")
+                printf -v "$status_variable" '%s' 'reused'
+                return 0
+            fi
+        fi
+        echo "Verifying archive provenance by downloading $(basename -- "$destination") again..."
     fi
 
     if [[ -z "$remote_etag" ]]; then
@@ -173,7 +185,12 @@ download() {
         downloaded_etag="$remote_etag"
     fi
 
+    digest="$(sha256sum < "$destination.part")"
+    digest="${digest%% *}"
+    printf '%s %s\n' "$digest" "$downloaded_etag" > "$receipt.part"
     mv -- "$destination.part" "$destination"
+    mv -- "$receipt.part" "$receipt"
+    ARCHIVE_HASH_OPTIONS+=(--verified-archive-sha256 "$digest")
     printf '%s\n' "$downloaded_etag" > "$etag_file.new"
     mv -- "$etag_file.new" "$etag_file"
     rm -f -- "$etag_file.part"
@@ -216,4 +233,4 @@ if [[ -n "$EXTREME_DISTANCE" ]]; then
 fi
 
 python3 "$SCRIPT_DIR/pipeline.py" --release-version "$RELEASE_VERSION" "${IPA_OPTIONS[@]}" \
-    --archive "$DE_ARCHIVE" --archive "$TR_ARCHIVE" --archive "$EN_ARCHIVE"
+    --archive "$DE_ARCHIVE" --archive "$TR_ARCHIVE" --archive "$EN_ARCHIVE" "${ARCHIVE_HASH_OPTIONS[@]}"

@@ -93,6 +93,21 @@ done
             changed = run()
             self.assertIn("Building en/clean", changed)
             self.assertNotIn("Building en/generate", changed)
+            # A behavior change with unchanged archives should invalidate only
+            # consumers of changed prepared lists, even with preserved mtimes.
+            policy = scripts / "clean_rhyme_words.py"
+            before = policy.read_bytes()
+            stat = policy.stat()
+            policy.write_bytes(before +
+                               b'\nACCEPTED_HEADWORD_ALPHANUMERICS -= frozenset("g")\n')
+            os.utime(policy, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            changed = run()
+            self.assertIn("Building de/generate", changed)
+            self.assertIn("Building de/validate", changed)
+            self.assertNotIn("Building tr/generate", changed)
+            policy.write_bytes(before)
+            run()
+            self.assertEqual((out / "SHA256SUMS").read_text().splitlines(), sums)
             archive(de, entries + [("en", "fail", [])])
             failed = run(success=False)
             self.assertIn("Building en/generate", failed)

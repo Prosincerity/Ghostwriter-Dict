@@ -97,6 +97,8 @@ class DownloadAndProcessTest(unittest.TestCase):
             self.assertEqual(calls[1].count("--archive"), 3)
             self.assertEqual(len(list((root / "raw").glob("*.jsonl.gz"))), 3)
 
+            local = root / "raw/de-extract.jsonl.gz"
+            local.write_bytes(b"content altered despite the same ETag")
             call_log.write_text("", encoding="utf-8")
             subprocess.run(
                 [str(pipeline), "--report-only", "--extreme-distance", "0.9"],
@@ -104,6 +106,9 @@ class DownloadAndProcessTest(unittest.TestCase):
             )
             audit_calls = call_log.read_text(encoding="utf-8").splitlines()
             self.assertNotIn("--replace-extreme-mismatches", audit_calls[-1])
+            self.assertEqual(local.read_bytes(), b"fixture archive\n")
+            self.assertIn("--status de=downloaded", audit_calls[0])
+            self.assertIn("--status tr=reused", audit_calls[0])
 
     def test_skip_download_requires_an_explicit_release(self):
         result = subprocess.run(
