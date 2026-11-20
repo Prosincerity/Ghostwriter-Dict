@@ -1,10 +1,14 @@
+import csv
 import importlib.util
+import json
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import unittest
 from collections import Counter
+from contextlib import closing
+from itertools import groupby
 from pathlib import Path
 
 
@@ -115,6 +119,36 @@ class DerivedValueTest(unittest.TestCase):
 
 
 class GenerateRhymeDatabaseTest(unittest.TestCase):
+    def test_double_reversal_from_stored_dataset_keys(self):
+        with (FIXTURES / "ipa_round_trip.tsv").open(encoding="utf-8", newline="") as fixture:
+            samples = list(csv.DictReader(fixture, delimiter="\t"))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for lang, group in groupby(samples, key=lambda row: row["language"]):
+                rows = list(group)
+                words = {}
+                for row in rows:
+                    words.setdefault(row["word"], []).append(row["ipa"])
+                source = root / f"{lang}.txt"
+                source.write_text("".join(f"{word}\t{json.dumps(ipas)}\n" for word, ipas in words.items()),
+                                  encoding="utf-8")
+                database = root / f"{lang}_fixture-release.db"
+                RHYME_DB.build_database(source, database, lang, "fixture-release")
+                with closing(sqlite3.connect(database)) as connection:
+                    for row in rows:
+                        with self.subTest(lang=lang, word=row["word"], ipa=row["ipa"]):
+                            key, = connection.execute(
+                                "SELECT ipa_reversed FROM dictionary WHERE word=? AND ipa=?",
+                                (row["word"], row["ipa"]),
+                            ).fetchone()
+                            self.assertEqual(key, row["ipa_reversed"])
+                            unknown = Counter()
+                            tokens = RHYME_DB.tokenize_ipa(key, lang, unknown)
+                            self.assertFalse(unknown)
+                            restored, _ = RHYME_DB.derived_values(tokens, lang)
+                            self.assertEqual(restored, row["reversed_again"])
+
     def test_each_language_fixture_builds_expected_schema_and_queries(self):
         suffix_pairs = {
             "en": ("cat", "bat"),

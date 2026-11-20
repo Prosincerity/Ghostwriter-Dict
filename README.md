@@ -116,6 +116,17 @@ bash -n scripts/download_and_process.sh scripts/clean_and_build.sh
 Tests use temporary fixtures and a fake eSpeak executable. A real-data sample
 check is available through `tests/scripts/run_rhyme_smoke_test.py --help`.
 
+The round-trip test includes eight rows sampled from the local English, German
+and Turkish `kaikki-v20261030` Wiktionary and eSpeak databases. The first five
+columns of `tests/fixtures/ipa_round_trip.tsv` identify the source and sampled
+values. The final column gives the expected result of tokenizing and reversing
+the stored key again. The sample data carries the dictionary data license.
+
+For exact display, read `dictionary.ipa`. The search key omits wrappers and
+spaces. It can also lose token boundaries: German eSpeak `gast` has IPA
+`ɡˈast`, but its reversed key `tsaˈɡ` begins with the German token `ts`.
+Applying the same reversal again produces `ɡˈats`.
+
 ## Licensing and attribution
 
 Code and tests are MIT licensed ([LICENSE-CODE](LICENSE-CODE)). Downloaded and
