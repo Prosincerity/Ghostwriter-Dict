@@ -1,6 +1,7 @@
 import gzip
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -61,6 +62,25 @@ class ExtractIpaTest(unittest.TestCase):
             with extractor.open("a", encoding="utf-8") as destination:
                 destination.write("\n# changed extraction code\n")
             self.assertIn("JSONL records", run().stdout)
+
+    def test_cache_recovers_from_nonobject_report_and_detects_same_size_edits(self):
+        for damage in ("report", "archive"):
+            with self.subTest(damage=damage), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                source = root / "edition.jsonl"
+                source.write_text('{"word":"one","lang_code":"en"}\n')
+                command = [sys.executable, str(EXTRACTOR), str(source), "--lang-code", "en",
+                           "--outdir", str(root), "--reuse-if-current"]
+                subprocess.run(command, capture_output=True, check=True)
+                if damage == "report":
+                    (root / "en/reports/reading/report.json").write_text("[]")
+                else:
+                    stamp = source.stat()
+                    source.write_text(source.read_text().replace("one", "two"))
+                    os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+                subprocess.run(command, capture_output=True, check=True)
+                expected = "two" if damage == "archive" else "one"
+                self.assertEqual((root / "en/wordlist_en_noipa.txt").read_text(), expected + "\n")
 
     def test_default_output_is_script_relative(self):
         spec = importlib.util.spec_from_file_location("extract_ipa", EXTRACTOR)

@@ -10,6 +10,12 @@ import sys
 import zlib
 from pathlib import Path
 
+# The manifest hashes source bytes. Execute those same bytes even when an edit
+# preserves both the file size and the timestamp used by ordinary .pyc caches.
+if __name__ == "__main__":
+    sys.pycache_prefix = "/dev/null"
+    sys.dont_write_bytecode = True
+
 import clean_rhyme_ipa as ipa
 import clean_rhyme_words as words
 import generate_espeak_ipa as g2p

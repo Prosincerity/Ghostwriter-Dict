@@ -78,6 +78,23 @@ class GenerateEspeakIpaTest(unittest.TestCase):
                         expected_ipa = "en-rizz-part-one en-rizz-part-two"
                     self.assertEqual(json.loads(ipa_json), [expected_ipa])
 
+    def test_changed_engine_and_batch_size_invalidate_standalone_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            engine = root / "espeak"
+            engine.write_text(FAKE_ESPEAK)
+            engine.chmod(0o755)
+            (root / "en").mkdir()
+            (root / "en/wordlist_en_noipa.txt").write_text("hello\n")
+            command = [sys.executable, str(GENERATOR), "--outdir", temp, "--lang-code", "en",
+                       "--espeak", str(engine)]
+            subprocess.run(command, check=True, capture_output=True)
+            engine.write_text(FAKE_ESPEAK.replace("{word}-ipa", "{word}-new"))
+            subprocess.run(command, check=True, capture_output=True)
+            self.assertIn("hello-new", (root / "en/wordlist_en_espeak_ipa.txt").read_text())
+            run = subprocess.run([*command, "--batch-size", "1"], check=True, text=True, capture_output=True)
+            self.assertIn("Generating en IPA", run.stdout)
+
     def test_reuses_only_complete_output_for_unchanged_download(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

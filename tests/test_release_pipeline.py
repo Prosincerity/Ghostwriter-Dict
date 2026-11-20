@@ -34,6 +34,7 @@ done
 """)
             engine.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", ALLOW_FILE=str(root / "allow"))
+            env.pop("PYTHONDONTWRITEBYTECODE", None)
             entries = [
                 ("en", "iPhone", ["/ˈma/"]), ("en", "Iphone", ["/ˈmi/", "/?bad/", "\t/ˈma/"]),
                 ("en", "iphone", []), ("en", "A.B.D.", []), ("en", "bad\tword", []),
@@ -108,6 +109,11 @@ done
             self.assertIn("Building de/generate", changed)
             self.assertIn("Building de/validate", changed)
             self.assertNotIn("Building tr/generate", changed)
+            # Change the source without changing the timestamp or byte length.
+            policy.write_bytes(policy.read_bytes().replace(b'frozenset("g")', b'frozenset("z")'))
+            os.utime(policy, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            run()
+            self.assertEqual((out / "de/wordlist_de_noipa.txt").read_text(), "grün\n")
             policy.write_bytes(before)
             run()
             self.assertEqual((out / "SHA256SUMS").read_text().splitlines(), sums)

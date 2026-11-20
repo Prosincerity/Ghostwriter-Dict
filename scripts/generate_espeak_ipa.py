@@ -248,7 +248,12 @@ def process_language(
         "input_sha256": input_hash,
         "source_archives": source_archives,
         "generator_sha256": sha256_file(Path(__file__)),
+        "batch_size": batch_size,
     }
+    resolved = shutil.which(executable)
+    if resolved is not None:
+        expected_source["executable"] = str(Path(resolved).resolve())
+        expected_source["executable_sha256"] = sha256_file(Path(resolved))
     if output_path.is_file() and report_path.is_file():
         try:
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -306,7 +311,7 @@ def main() -> None:
     lang_codes = tuple(dict.fromkeys(args.lang_codes or DEFAULT_LANGUAGES))
 
     try:
-        sources = archive_sources(args.source_archive)
+        sources = archive_sources(args.source_archive, hash_content=True)
         for lang_code in lang_codes:
             process_language(
                 args.espeak, args.outdir, lang_code, args.batch_size, sources,

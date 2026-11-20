@@ -221,7 +221,7 @@ def main() -> None:
 
     # A dict also removes repeated --lang-code arguments while retaining order.
     lang_codes = tuple(dict.fromkeys(args.lang_codes))
-    sources = archive_sources(args.inputs)
+    sources = archive_sources(args.inputs, hash_content=True)
     source_signature = {
         "source_archives": sources,
         "extractor_sha256": sha256_file(Path(__file__)),
@@ -236,7 +236,7 @@ def main() -> None:
             try:
                 report = json.loads(report_path.read_text(encoding="utf-8"))
                 paths = (base / f"wordlist_{code}_ipa.txt", base / f"wordlist_{code}_noipa.txt")
-                reusable = reusable and all(report.get(key) == value for key, value in source_signature.items())
+                reusable = isinstance(report, dict) and all(report.get(key) == value for key, value in source_signature.items())
                 reusable = reusable and report.get("outputs") == {
                     str(path.resolve()): sha256_file(path) for path in paths
                 }

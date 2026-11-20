@@ -15,7 +15,7 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def archive_sources(paths: list[Path]) -> list[dict[str, object]]:
+def archive_sources(paths: list[Path], *, hash_content: bool = False) -> list[dict[str, object]]:
     sources = []
     for path in paths:
         metadata = path.stat()
@@ -26,6 +26,8 @@ def archive_sources(paths: list[Path]) -> list[dict[str, object]]:
             "size_bytes": metadata.st_size,
             "modified_ns": metadata.st_mtime_ns,
         })
+        if hash_content:
+            sources[-1]["sha256"] = sha256_file(path)
     return sources
 
 
