@@ -1,6 +1,7 @@
 import csv
 import importlib.util
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -158,6 +159,46 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                             self.assertFalse(unknown)
                             restored, _ = RHYME_DB.derived_values(tokens, lang)
                             self.assertEqual(restored, row["reversed_again"])
+
+    def test_random_release_words_round_trip(self):
+        strict = os.environ.get("GHOSTWRITER_REQUIRE_EXACT_IPA") == "1"
+        failures = Counter()
+        first_failure = {}
+        sample = FIXTURES / "ipa_random_release.tsv"
+        with tempfile.TemporaryDirectory() as temp, sample.open(encoding="utf-8", newline="") as source:
+            rows = list(csv.DictReader(source, delimiter="\t"))
+            self.assertEqual({row["language"] for row in rows}, set(RHYME_DB.LANGUAGES))
+            for lang in RHYME_DB.LANGUAGES:
+                samples = [row for row in rows if row["language"] == lang]
+                words = {}
+                expected = {}
+                for row in samples:
+                    words.setdefault(row["word"], []).append(row["ipa"])
+                    expected[row["word"], row["ipa"]] = row["ipa_reversed"]
+                self.assertEqual(len(words), 500)
+                wordlist = Path(temp) / f"{lang}.tsv"
+                wordlist.write_text("".join(f"{word}\t{json.dumps(ipas)}\n" for word, ipas in words.items()),
+                                    encoding="utf-8")
+                database = Path(temp) / f"{lang}_sample.db"
+                RHYME_DB.build_database(wordlist, database, lang, "sample")
+                with closing(sqlite3.connect(database)) as connection:
+                    stored = {(word, ipa): key for word, ipa, key in connection.execute(
+                        "SELECT word, ipa, ipa_reversed FROM dictionary")}
+                self.assertEqual(stored, expected)
+                for (word, ipa), key in stored.items():
+                    with self.subTest(lang=lang, word=word, ipa=ipa):
+                        forward = RHYME_DB.tokenize_ipa(ipa, lang)
+                        reversed_tokens = RHYME_DB.tokenize_ipa(key, lang)
+                        restored, _ = RHYME_DB.derived_values(reversed_tokens, lang)
+                        # A separator-free key is invertible at the phoneme level
+                        # whenever re-tokenization preserves its boundaries.
+                        if reversed_tokens == forward[::-1]:
+                            self.assertEqual(restored, "".join(forward))
+                        if restored != ipa:
+                            failures[lang] += 1
+                            first_failure.setdefault(lang, (word, ipa, restored))
+        if strict:
+            self.assertFalse(failures, f"Exact double reversal failures: {dict(failures)}; examples: {first_failure}")
 
     def test_each_language_fixture_builds_expected_schema_and_queries(self):
         suffix_pairs = {

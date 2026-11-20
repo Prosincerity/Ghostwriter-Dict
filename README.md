@@ -122,6 +122,22 @@ columns of `tests/fixtures/ipa_round_trip.tsv` identify the source and sampled
 values. The final column gives the expected result of tokenizing and reversing
 the stored key again. The sample data carries the dictionary data license.
 
+A second frozen fixture, `tests/fixtures/ipa_random_release.tsv`, contains 500
+distinct words per language from that same release, with all IPA variants
+for each selected word in its source. For each language we took the 250 lowest
+BLAKE2b scores from Wiktionary, then 250 from eSpeak excluding already selected
+words, using the smoke runner's `selection_score` with seed `ipa-round-trip-v1`
+and the word as its final argument. These data are also CC BY-SA 4.0.
+
+The normal suite verifies the sampled database keys and exercises double
+reversal. To require exact string recovery for every sampled pronunciation, run
+the stricter diagnostic below. It reports counts and examples and exits with a
+failure when a key loses information.
+
+```bash
+GHOSTWRITER_REQUIRE_EXACT_IPA=1 python3 -B -m unittest discover -s tests -p test_generate_rhyme_db.py -k random_release
+```
+
 For exact display, read `dictionary.ipa`. The search key omits wrappers and
 spaces. It can also lose token boundaries: German eSpeak `gast` has IPA
 `ɡˈast`, but its reversed key `tsaˈɡ` begins with the German token `ts`.
