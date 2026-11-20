@@ -15,7 +15,7 @@ from typing import Optional, TextIO
 from generate_rhyme_db import LANGUAGES
 
 
-POLICY_VERSION = "rhyme-cleanup-v17"
+POLICY_VERSION = "rhyme-cleanup-v18"
 BASE_HEADWORD_LETTERS = string.ascii_letters
 GERMAN_HEADWORD_LETTERS = "ÄÖÜẞäöüß"
 TURKISH_HEADWORD_LETTERS = "ÂÇĞÎİÖŞÛÜâçğîıöşûü"
@@ -39,9 +39,6 @@ ACCEPTED_HEADWORD_LETTERS = frozenset(
 ACCEPTED_HEADWORD_ALPHANUMERICS = ACCEPTED_HEADWORD_LETTERS | frozenset(
     string.digits
 )
-INTERNAL_HEADWORD_SEPARATORS = frozenset("&")
-DISALLOWED_HEADWORD_SEPARATORS = frozenset(".-")
-HEADWORD_APOSTROPHE = "'"
 HEADWORD_TRANSLATION = str.maketrans(
     {
         "’": "'", "‘": "'", "ʼ": "'",
@@ -107,28 +104,13 @@ def normalize_headword(word: str) -> tuple[str, list[str]]:
     return unicodedata.normalize("NFC", translated), transformations
 
 
-def is_product_alphanumeric(character: str, lang_code: str) -> bool:
-    del lang_code
-    return character in ACCEPTED_HEADWORD_ALPHANUMERICS
-
-
 def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]:
     if not word:
         return {
             "reason": "empty_headword_after_normalization",
             "details": {"invalid_characters": []},
         }
-    invalid = Counter()
-    for character in word:
-        if (
-            is_product_alphanumeric(character, lang_code)
-            or character in INTERNAL_HEADWORD_SEPARATORS
-            or character in DISALLOWED_HEADWORD_SEPARATORS
-            or character == "/"
-            or character == HEADWORD_APOSTROPHE
-        ):
-            continue
-        invalid[character] += 1
+    invalid = Counter(character for character in word if character not in ACCEPTED_HEADWORD_ALPHANUMERICS)
     if invalid:
         characters = [
             {"character": character, "codepoint": f"U+{ord(character):04X}", "count": count}
@@ -139,36 +121,9 @@ def headword_rejection(word: str, lang_code: str) -> Optional[dict[str, object]]
             "details": {"invalid_characters": characters},
         }
 
-    for position, character in enumerate(word):
-        if character in DISALLOWED_HEADWORD_SEPARATORS:
-            return {
-                "reason": "headword_contains_dash_or_dot",
-                "details": {"character": character, "position": position},
-            }
-
     if len(word) == 1 and word in ACCEPTED_HEADWORD_LETTERS:
         return {"reason": "single_letter_headword", "details": {"character": word}}
 
-    for position, character in enumerate(word):
-        if character in INTERNAL_HEADWORD_SEPARATORS:
-            if position == 0:
-                return {"reason": "leading_special_character", "details": {"character": character, "position": position}}
-            if (
-                position == len(word) - 1
-                or word[position - 1] not in ACCEPTED_HEADWORD_LETTERS
-                or word[position + 1] not in ACCEPTED_HEADWORD_LETTERS
-            ):
-                return {"reason": "misplaced_headword_separator", "details": {"character": character, "position": position}}
-        elif character == HEADWORD_APOSTROPHE:
-            return {"reason": "headword_contains_apostrophe", "details": {"character": character, "position": position}}
-        elif character == "/":
-            if (
-                position == 0
-                or position == len(word) - 1
-                or word[position - 1] not in ACCEPTED_HEADWORD_LETTERS
-                or word[position + 1] not in ACCEPTED_HEADWORD_LETTERS
-            ):
-                return {"reason": "misplaced_headword_symbol", "details": {"character": character, "position": position}}
     return None
 
 

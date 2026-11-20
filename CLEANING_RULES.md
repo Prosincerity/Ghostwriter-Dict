@@ -1,6 +1,6 @@
 # Cleaning rules for release builds
 
-Policy `rhyme-cleanup-v17`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
+Policy `rhyme-cleanup-v18`. The examples below apply to English, German and Turkish unless a language is specified. “Source” means a Wiktionary IPA field, including audio IPA. A rejected source pronunciation can trigger repair even when a sibling remains eligible.
 
 ## Record selection and IPA availability
 
@@ -22,11 +22,8 @@ These rules apply identically to records with and without pronunciations. The ex
 | Canonical composition | Apply NFC after translations and again after lowercasing. For example, decomposed `grün` merges with `grün`. There is no accent stripping, transliteration or compatibility folding. |
 | Uppercase abbreviation | Before lowercasing, remove dots **for detection only**. Reject if the remaining string is alphabetic, uppercase and at least two characters long. Reject `ÖPNV`, `US` and `A.B.D.`. Keep mixed-case `iPhone` and title-case `Haus`. All-caps ordinary words also match. Digits and symbols prevent this specific test from matching, so `CO₂` and `R&B` follow the ordinary character rules. |
 | Shared alphabet | Allow ASCII letters and digits, Hawaiian ʻ and the explicit German, Turkish, French and loanword letters in `ACCEPTED_HEADWORD_LETTERS`. This is a curated set, not every Latin Unicode character. Accept `Straße`, `œuf` and `ağaç`. Reject Cyrillic, spaces, tabs, emoji, unlisted letters/marks and other symbols such as `$` or `*`. Preserve raw data for auditing. |
-| Dots and dashes | Reject anywhere, including the leading, medial and trailing positions. Reject `anti-`, `May–December` and `t.b.a.`. |
 | Single letter | Reject a one-character member of the letter inventory, including `ü`. Keep a single ASCII digit such as `7`. |
-| Apostrophe | Reject a headword containing an ASCII apostrophe anywhere after typographic translation. Examples include `'abd`, `'a'ā`, `can't`, `losin’` and `7'nci`. Evaluate independently supplied spellings such as `abd` normally. Hawaiian ʻokina (U+02BB) remains a permitted letter. |
-| Ampersand and slash | Both neighbors must be permitted letters. Keep `r&b` and `a/b`. Reject `&word`, `a/2` and trailing separators. A leading ampersand has its own rejection reason. |
-| Percent and plus | Reject either character anywhere in a headword, including `10%`, `%10`, `c++` and `a+b`. Plain `10` remains eligible. Only ampersands and slashes may occur as punctuation in an eligible headword. |
+| Punctuation and symbols | After normalization, reject every character outside the shared letter and digit inventory, in any position. Examples include `r&b`, `a/b`, `can't`, `t.b.a.`, `anti-`, `10%` and `c++`. Independently supplied `rock` and `10` pass this check. |
 | Lowercase | Apply Unicode lowercase to accepted forms. For Turkish, first map I to ı and İ to i, so `Işık` and `İzmir` become `ışık` and `izmir`. German `ß` stays distinct from `ss`. Check the resulting alphabet again, including combining marks introduced by lowercasing. |
 | Merge | Key by normalized word, then deduplicate each distinct source string and each normalized IPA variant independently. Identical variants collapse across records and editions. `Word` and `word` with different valid pronunciations contribute both to one word. |
 

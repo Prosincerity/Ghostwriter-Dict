@@ -45,8 +45,8 @@ class CleanupPipelineTest(unittest.TestCase):
             )
             self.assertEqual(wiki_output.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"))
             self.assertEqual(espeak_output.read_text(encoding="utf-8"), "")
-            self.assertIn("rhyme-cleanup-v17", word_result.stdout)
-            self.assertIn("rhyme-cleanup-v17", ipa_result.stdout)
+            self.assertIn("rhyme-cleanup-v18", word_result.stdout)
+            self.assertIn("rhyme-cleanup-v18", ipa_result.stdout)
             self.assertTrue(WORDS.output_paths(wiki_words)["report"].is_file())
             self.assertTrue(IPA.output_paths(wiki_output, espeak_output)["report"].is_file())
 
@@ -122,24 +122,21 @@ class CleanupPipelineTest(unittest.TestCase):
             self.assertIn("tones", espeak_rows)
             self.assertIn("already", espeak_rows)
             self.assertEqual(word_report["counts"]["rejected_words"], 21)
-            self.assertEqual(word_report["policy_version"], "rhyme-cleanup-v17")
-            self.assertEqual(ipa_report["policy_version"], "rhyme-cleanup-v17")
+            self.assertEqual(word_report["policy_version"], "rhyme-cleanup-v18")
+            self.assertEqual(ipa_report["policy_version"], "rhyme-cleanup-v18")
 
             word_paths = WORDS.output_paths(wiki_words)
             rejected_words = json.loads(word_paths["rejected_words"].read_text(encoding="utf-8"))
             groups = {group["reason"]: group for group in rejected_words["groups"]}
             self.assertEqual(set(groups), {
-                "disallowed_headword_characters", "headword_contains_dash_or_dot",
-                "single_letter_headword", "uppercase_abbreviation", "headword_contains_apostrophe",
+                "disallowed_headword_characters", "single_letter_headword", "uppercase_abbreviation",
             })
             self.assertEqual(groups["disallowed_headword_characters"]["words"], [
-                "♥-lichen", "Victory Day", "Dungeons & Dragons", "$hit", "tw*t",
+                "-casting", "anti-", "♥-lichen", "mother-in-law", "state-of-the-art", "inter-galactic",
+                "May–December", "7'nci", "can't", "can’t", "Victory Day", "t.b.a.", "t.b.a", "losin’",
+                "'cause", "'Murica", "Dungeons & Dragons", "$hit", "tw*t",
             ])
             self.assertEqual(groups["single_letter_headword"]["words"], ["ü"])
-            self.assertEqual(groups["headword_contains_dash_or_dot"]["words"], [
-                "-casting", "anti-", "mother-in-law", "state-of-the-art",
-                "inter-galactic", "May–December", "t.b.a.", "t.b.a",
-            ])
             self.assertEqual(
                 {json.loads(line)["original_word"] for line in
                  word_paths["word_changes"].read_text(encoding="utf-8").splitlines()},

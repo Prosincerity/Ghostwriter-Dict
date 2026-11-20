@@ -52,7 +52,7 @@ This project modifies the source data by:
 - deduplicating words and pronunciations;
 - removing unusable IPA placeholders and malformed records;
 - filtering product headwords with a shared curated Latin alphabet and
-  position-sensitive punctuation rules;
+  rejecting punctuation throughout normalized headwords;
 - validating and normalizing pronunciation notation;
 - regenerating malformed or unstressed Wiktionary pronunciations with eSpeak NG
   and placing replacements in separately identified eSpeak lists while keeping

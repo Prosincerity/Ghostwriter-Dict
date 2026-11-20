@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import string
 import unittest
 from pathlib import Path
 
@@ -146,25 +147,16 @@ class HeadwordCleanupTest(unittest.TestCase):
                     )
                     self.assertTrue(rejection["details"]["invalid_characters"])
 
-    def test_audited_separators_and_okina_are_allowed(self):
-        for word in (
-            "rock&roll",
-            "Hawaiʻian",
-            "AC/DC",
-        ):
-            with self.subTest(word=word):
-                self.assertIsNone(WORDS.headword_rejection(word, "en"))
+    def test_okina_is_a_permitted_letter(self):
+        self.assertIsNone(WORDS.headword_rejection("Hawaiʻian", "en"))
 
-    def test_leading_special_characters_are_rejected(self):
-        examples = {
-            "$hit": "disallowed_headword_characters",
-            "%word": "disallowed_headword_characters",
-            "-casting": "headword_contains_dash_or_dot",
-        }
-        for word, reason in examples.items():
-            with self.subTest(word=word):
-                rejection = WORDS.headword_rejection(word, "en")
-                self.assertEqual(rejection["reason"], reason)
+    def test_punctuation_is_rejected_even_between_letters(self):
+        for lang in ("en", "de", "tr"):
+            for symbol in string.punctuation + "、。؛":
+                with self.subTest(lang=lang, symbol=symbol):
+                    _, _, rejection = WORDS.clean_headword("ab" + symbol + "cd", lang)
+                    self.assertEqual(rejection["reason"], "disallowed_headword_characters")
+                    self.assertEqual(rejection["details"]["invalid_characters"][0]["character"], symbol)
 
     def test_single_letter_entries_are_rejected(self):
         for lang_code, word in (("de", "ü"), ("de", "ö"), ("de", "ß")):
@@ -172,21 +164,6 @@ class HeadwordCleanupTest(unittest.TestCase):
                 rejection = WORDS.headword_rejection(word, lang_code)
                 self.assertEqual(rejection["reason"], "single_letter_headword")
         self.assertIsNone(WORDS.headword_rejection("7", "de"))
-
-    def test_any_dash_or_dot_is_rejected(self):
-        for word in ("inter-galactic", "A.B.D.", "t.b.a", "zyg-", "Dr.",
-                     "-casting", ".word", "a..b", "a-7", "7-a", "a-&b"):
-            with self.subTest(word=word):
-                rejection = WORDS.headword_rejection(word, "en")
-                self.assertEqual(rejection["reason"], "headword_contains_dash_or_dot")
-                position = rejection["details"]["position"]
-                self.assertEqual(word[position], rejection["details"]["character"])
-
-    def test_separators_must_be_between_letters(self):
-        for word in ("rock&", "rock&&roll"):
-            with self.subTest(word=word):
-                rejection = WORDS.headword_rejection(word, "en")
-                self.assertEqual(rejection["reason"], "misplaced_headword_separator")
 
     def test_requested_obfuscated_entries_are_rejected(self):
         for word in ("tw*t", "tw*ts", "tw@", "tw@s", "tw@t", "tw@ts"):
@@ -210,12 +187,6 @@ class HeadwordCleanupTest(unittest.TestCase):
                         self.assertEqual(rejection["reason"], "disallowed_headword_characters")
                         self.assertEqual(rejection["details"]["invalid_characters"][0]["character"], symbol)
 
-    def test_slashes_must_be_between_letters(self):
-        for word in ("AC/", "/DC", "a/2"):
-            with self.subTest(word=word):
-                rejection = WORDS.headword_rejection(word, "en")
-                self.assertEqual(rejection["reason"], "misplaced_headword_symbol")
-
     def test_malformed_or_non_ascii_spacing_and_symbols_are_rejected(self):
         for word in (
             "two words",
@@ -236,9 +207,9 @@ class HeadwordCleanupTest(unittest.TestCase):
         for lang in ("en", "de", "tr"):
             for word in ("'a", "'a'", "'a'a", "'a'ā", "'abd", "don't", "losin’", "‘abc", "7ʼnci"):
                 with self.subTest(word=word, lang=lang):
-                    normalized, _, rejection = WORDS.clean_headword(word, lang)
-                    self.assertEqual(rejection["reason"], "headword_contains_apostrophe")
-                    self.assertEqual(normalized[rejection["details"]["position"]], "'")
+                    _, _, rejection = WORDS.clean_headword(word, lang)
+                    self.assertEqual(rejection["reason"], "disallowed_headword_characters")
+                    self.assertEqual(rejection["details"]["invalid_characters"][0]["character"], "'")
 
     def test_search_oriented_headword_normalization(self):
         examples = {
