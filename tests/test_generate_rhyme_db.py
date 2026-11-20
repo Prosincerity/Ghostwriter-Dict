@@ -303,6 +303,11 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                     finally:
                         connection.close()
 
+    def test_input_controls_are_rejected_before_trimming(self):
+        for ipa in ("\t/ˈma/", "[ˈma]\n", "ˈma\x85"):
+            with self.subTest(ipa=ipa), self.assertRaisesRegex(ValueError, "control"):
+                RHYME_DB.parse_wordlist_line(Path("fixture"), 1, "bad\t" + json.dumps([ipa]) + "\n")
+
     def test_db_rejects_key_with_no_phoneme_and_keeps_previous_database(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "input.tsv"

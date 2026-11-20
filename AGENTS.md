@@ -55,7 +55,7 @@ delimiters.
 
 ## Product cleanup
 
-Never modify canonical lists in place. Policy `rhyme-cleanup-v18` produces
+Never modify canonical lists in place. Policy `rhyme-cleanup-v19` produces
 separate rhyme-eligible lists and reports under `out/<lang>/reports/`.
 
 - All languages share the same curated Latin alphabet covering English,

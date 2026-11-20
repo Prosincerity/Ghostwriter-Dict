@@ -112,8 +112,6 @@ def clean_pronunciation(
     """Return valid normalized variants, transformation names, and rejects."""
     if any(unicodedata.category(character) == "Cc" for character in ipa):
         return [], [], [{"reason": "embedded_control"}]
-    if "…" in ipa or "..." in ipa:
-        return [], [], [{"reason": "incomplete_pronunciation"}]
 
     try:
         alternatives, transformations = split_alternatives(ipa.strip())
@@ -149,6 +147,8 @@ def clean_pronunciation(
         details: dict[str, object] = {"candidate": candidate}
         if not candidate.strip():
             reason = "empty_pronunciation"
+        elif "…" in candidate or "..." in candidate:
+            reason = "incomplete_pronunciation"
         elif not validate_delimiters(candidate):
             reason = "invalid_delimiters"
         elif any(character in FRAGMENT_DASHES for character in candidate):
@@ -535,8 +535,8 @@ def clean_ipa_wordlists(
                             reject("espeak", word, raw_ipa, "espeak_generation_invalid",
                                    {"validation_reasons": [item["reason"] for item in rejected]}, processed)
                             counts["regeneration_failed_words"] += 1
-                            if repair_requests is not None and not staging.execute(
-                                "SELECT 1 FROM pronunciations WHERE word=? AND source='wiktionary'", (word,)
+                            if not staging.execute(
+                                "SELECT 1 FROM words WHERE source IN ('wiktionary', 'espeak') AND word=?", (word,)
                             ).fetchone():
                                 raise ValueError(f"{lang_code}: no valid source or repair for {word!r}: {raw_ipa!r}")
                         reasons = [row[0] for row in staging.execute(

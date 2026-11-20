@@ -251,6 +251,29 @@ class IpaRegenerationTest(unittest.TestCase):
             self.assertEqual(rows(wiki_output), {"catapult": ["/ˈʃuːɡɛlmə/"]})
             self.assertEqual(rows(espeak_output), {"catapult": ["ˈʃuːɡɛlmə"]})
 
+    def test_unsuccessful_repair_requires_a_surviving_pronunciation(self):
+        for prepared, existing in ((False, False), (True, True)):
+            with self.subTest(prepared=prepared), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                wiki = root / "wiki.txt"
+                generated = root / "generated.txt"
+                repairs = root / "repairs.jsonl" if prepared else None
+                if repairs:
+                    repairs.write_text(json.dumps(["cat", "/kæt/", {"reason": "missing_stress_mark"}]) + "\n")
+                wiki.write_text("" if prepared else 'cat\t["/kæt/"]\n')
+                generated.write_text('cat\t["kæt"]\n' if existing else "")
+                outputs = (root / "source.out", root / "machine.out")
+                for output in outputs:
+                    output.write_text("previous\n")
+                with mock.patch.object(IPA, "call_espeak", return_value=["☃"]):
+                    if existing:
+                        IPA.clean_ipa_wordlists(wiki, generated, *outputs, "en", "fake", repair_requests=repairs)
+                        self.assertEqual(rows(outputs[1]), {"cat": ["kæt"]})
+                    else:
+                        with self.assertRaisesRegex(ValueError, "no valid source or repair"):
+                            IPA.clean_ipa_wordlists(wiki, generated, *outputs, "en", "fake")
+                        self.assertTrue(all(output.read_text() == "previous\n" for output in outputs))
+
     def test_espeak_failure_preserves_previous_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

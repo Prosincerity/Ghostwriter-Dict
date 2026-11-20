@@ -89,6 +89,13 @@ class PronunciationCleanupTest(unittest.TestCase):
                 self.assertEqual(valid, [])
                 self.assertEqual(rejects[0]["reason"], "empty_pronunciation")
 
+    def test_complete_alternative_survives_an_incomplete_sibling(self):
+        for value in ("/ˈma~a…/", "/ˈma/, [a...]"):
+            with self.subTest(value=value):
+                valid, _, rejects = self.clean(value)
+                self.assertEqual(valid, ["/ˈma/"])
+                self.assertEqual([item["reason"] for item in rejects], ["incomplete_pronunciation"])
+
     def test_optional_groups_are_nonnested_and_capped(self):
         self.assertEqual(
             self.clean("/a((b))c/")[2][0]["reason"], "invalid_optional_group"

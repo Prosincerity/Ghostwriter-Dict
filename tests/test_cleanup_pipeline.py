@@ -45,8 +45,8 @@ class CleanupPipelineTest(unittest.TestCase):
             )
             self.assertEqual(wiki_output.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"))
             self.assertEqual(espeak_output.read_text(encoding="utf-8"), "")
-            self.assertIn("rhyme-cleanup-v18", word_result.stdout)
-            self.assertIn("rhyme-cleanup-v18", ipa_result.stdout)
+            self.assertIn("rhyme-cleanup-v19", word_result.stdout)
+            self.assertIn("rhyme-cleanup-v19", ipa_result.stdout)
             self.assertTrue(WORDS.output_paths(wiki_words)["report"].is_file())
             self.assertTrue(IPA.output_paths(wiki_output, espeak_output)["report"].is_file())
 
@@ -122,8 +122,8 @@ class CleanupPipelineTest(unittest.TestCase):
             self.assertIn("tones", espeak_rows)
             self.assertIn("already", espeak_rows)
             self.assertEqual(word_report["counts"]["rejected_words"], 21)
-            self.assertEqual(word_report["policy_version"], "rhyme-cleanup-v18")
-            self.assertEqual(ipa_report["policy_version"], "rhyme-cleanup-v18")
+            self.assertEqual(word_report["policy_version"], "rhyme-cleanup-v19")
+            self.assertEqual(ipa_report["policy_version"], "rhyme-cleanup-v19")
 
             word_paths = WORDS.output_paths(wiki_words)
             rejected_words = json.loads(word_paths["rejected_words"].read_text(encoding="utf-8"))

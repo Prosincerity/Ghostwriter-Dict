@@ -321,6 +321,8 @@ def parse_wordlist_line(path: Path, line_number: int, line: str) -> tuple[str, l
             raise ValueError(
                 f"{path}:{line_number}: every IPA array item must be a non-empty string"
             )
+        if any(unicodedata.category(char) == "Cc" for char in value):
+            raise ValueError(f"{path}:{line_number}: IPA contains a control character")
         ipas.append(unicodedata.normalize("NFC", value.strip()))
     return word, ipas
 
