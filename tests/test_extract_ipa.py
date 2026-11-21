@@ -14,6 +14,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 EXTRACTOR = PROJECT_DIR / "scripts" / "extract_ipa.py"
 sys.path.insert(0, str(EXTRACTOR.parent))
 import extract_ipa
+import raw_entries
 
 
 def write_gzip_jsonl(path, records):
@@ -23,6 +24,39 @@ def write_gzip_jsonl(path, records):
 
 
 class ExtractIpaTest(unittest.TestCase):
+    def test_release_projection_counts_invalid_utf8_but_preserves_json_escapes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive = root / "edition.jsonl.gz"
+            archive.write_bytes(gzip.compress(
+                b'{"lang_code":"en","word":"ghost","note":"\xff"}\n'
+                b'{"lang_code":"en","word":"saved","sounds":[{"ipa":"\\udcff"}]}\n'
+                b'{"lang_code":"en","word":"last"}\n'
+            ))
+            counts = raw_entries.extract([archive], {"en": root})
+            self.assertEqual(counts["records_read"], 3)
+            self.assertEqual(counts["bad_json_records"], 1)
+            self.assertEqual(counts["en"], 2)
+            ipa, missing = raw_entries.raw_paths(root, "en")
+            self.assertEqual(json.loads(ipa.read_text()), ["saved", ["\udcff"]])
+            self.assertEqual(json.loads(missing.read_text()), ["last", []])
+
+    @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "requires Python's integer digit limit")
+    def test_decoder_integer_limit_does_not_discard_later_records(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive = root / "edition.jsonl.gz"
+            archive.write_bytes(gzip.compress(
+                b'{"metadata":' + b"1" * 700 + b'}\n{"word":"kept","lang_code":"en"}\n'
+            ))
+            result = subprocess.run(
+                [sys.executable, str(EXTRACTOR), str(archive), "--lang-code", "en", "--outdir", str(root)],
+                env=dict(os.environ, PYTHONINTMAXSTRDIGITS="640"), text=True, capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Bad JSON records      : 1", result.stdout)
+            self.assertEqual((root / "en/wordlist_en_noipa.txt").read_text(), "kept\n")
+
     def test_reuses_complete_wordlists_until_source_code_or_output_changes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

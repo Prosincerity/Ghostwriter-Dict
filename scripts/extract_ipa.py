@@ -117,6 +117,14 @@ def open_jsonl(path: Path) -> IO[str]:
     return path.open(mode="r", encoding="utf-8", errors="surrogateescape")
 
 
+def parse_json_record(line: str) -> object:
+    # surrogateescape preserves malformed bytes until we can reject just their
+    # record. A literal JSON escape is still ASCII here and can be audited.
+    if INVALID_UTF8.search(line):
+        raise ValueError("invalid UTF-8 in JSON record")
+    return json.loads(line)
+
+
 def input_position(source: IO[str], path: Path) -> int:
     """Return bytes consumed from the underlying compressed/plain file."""
     buffer = source.buffer  # type: ignore[attr-defined]
@@ -251,12 +259,9 @@ def main() -> None:
                         total_lines,
                         {code: len(languages[code].words) for code in lang_codes},
                     )
-                if INVALID_UTF8.search(line):
-                    bad_lines += 1
-                    continue
                 try:
-                    obj = json.loads(line)
-                except (json.JSONDecodeError, UnicodeDecodeError):
+                    obj = parse_json_record(line)
+                except ValueError:
                     bad_lines += 1
                     continue
 

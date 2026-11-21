@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from build_reports import publish_files
-from extract_ipa import ReadingProgress, input_position, iter_ipa_fields, open_jsonl
+from extract_ipa import ReadingProgress, input_position, iter_ipa_fields, open_jsonl, parse_json_record
 
 
 def raw_paths(directory, lang):
@@ -36,7 +36,7 @@ def extract(archives, directories):
                             progress.update(completed + input_position(source, archive),
                                             counts["records_read"], {k: len(v) for k, v in words.items()})
                         try:
-                            entry = json.loads(line)
+                            entry = parse_json_record(line)
                         except ValueError:
                             counts["bad_json_records"] += 1
                             continue
