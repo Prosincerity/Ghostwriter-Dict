@@ -3,11 +3,10 @@
 
 import argparse
 import gzip
-import hashlib
 from pathlib import Path
 import re
 import sys
-from build_reports import publish_files, staged_file
+from build_reports import publish_files, sha256_file, staged_file
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -34,12 +33,7 @@ def compress_database(database: Path, index: int, total: int) -> tuple[Path, Pat
                             flush=True,
                         )
 
-        digest = hashlib.sha256()
-        with archive_part.open("rb") as compressed:
-            for chunk in iter(lambda: compressed.read(1024 * 1024), b""):
-                digest.update(chunk)
-
-        return archive_part, archive, digest.hexdigest()
+        return archive_part, archive, sha256_file(archive_part)
     except BaseException:
         archive_part.unlink(missing_ok=True)
         raise

@@ -214,7 +214,6 @@ def process_language(
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
 
     report_path = language_outdir / "reports" / "ipa_generation" / f"wordlist_{lang_code}_espeak_ipa_source.json"
-    report_part = report_path.with_name(f"{report_path.name}.part")
     input_hash = sha256_file(input_path)
     source_archives = sources if sources is not None else []
     expected_source = {
@@ -262,15 +261,7 @@ def process_language(
         "generated_words": generated,
         "empty_ipa_words": empty,
     }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with report_part.open("w", encoding="utf-8", newline="\n") as destination:
-            json.dump(report, destination, ensure_ascii=False, indent=2, sort_keys=True)
-            destination.write("\n")
-        os.replace(report_part, report_path)
-    except BaseException:
-        report_part.unlink(missing_ok=True)
-        raise
+    write_json(report_path, report)
     write_json(language_outdir / "reports" / "ipa_generation" / "report.json", {
         **report, "status": "generated",
     })
