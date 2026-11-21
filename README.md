@@ -113,8 +113,7 @@ python3 -B -m unittest discover -s tests -v
 bash -n scripts/download_and_process.sh scripts/clean_and_build.sh
 ```
 
-Tests use temporary fixtures and a fake eSpeak executable. A real-data sample
-check is available through `tests/scripts/run_rhyme_smoke_test.py --help`.
+Tests use temporary build directories and a fake eSpeak executable.
 
 The round-trip test includes eight rows sampled from the local English, German
 and Turkish `kaikki-v20261030` Wiktionary and eSpeak databases. The first five
@@ -126,8 +125,9 @@ A second frozen fixture, `tests/fixtures/ipa_random_release.tsv`, contains 500
 distinct words per language from that same release, with all IPA variants
 for each selected word in its source. For each language we took the 250 lowest
 BLAKE2b scores from Wiktionary, then 250 from eSpeak excluding already selected
-words, using the smoke runner's `selection_score` with seed `ipa-round-trip-v1`
-and the word as its final argument. These data are also CC BY-SA 4.0.
+words. The score is the unsigned big-endian value of a 16-byte BLAKE2b digest
+of the seed `ipa-round-trip-v1`, language code, source name, and word, encoded
+as UTF-8 and separated by NUL bytes. These data are also CC BY-SA 4.0.
 
 The normal suite verifies the sampled database keys and exercises double
 reversal. To require exact string recovery for every sampled pronunciation, run

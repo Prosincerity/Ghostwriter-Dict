@@ -15,7 +15,7 @@ changes.
 - `scripts/clean_rhyme_words.py`: written-word cleanup and word audit reports
 - `scripts/clean_rhyme_ipa.py`: IPA validation, eSpeak repair, and IPA reports
 - `scripts/generate_rhyme_db.py`: versioned SQLite index creation
-- `tests/`: synthetic tests and the opt-in real-data smoke runner
+- `tests/`: synthetic pipeline tests and frozen IPA regression fixtures
 
 ## Safety and implementation rules
 

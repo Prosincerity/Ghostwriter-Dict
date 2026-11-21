@@ -33,10 +33,6 @@ ESPEAK = load_script(
 RHYME = load_script("generate_rhyme_db_helpers", SCRIPTS_DIR / "generate_rhyme_db.py")
 WORDS = load_script("clean_rhyme_words_helpers", SCRIPTS_DIR / "clean_rhyme_words.py")
 IPA = load_script("clean_rhyme_ipa_helpers", SCRIPTS_DIR / "clean_rhyme_ipa.py")
-SMOKE = load_script(
-    "run_rhyme_smoke_test_helpers",
-    PROJECT_DIR / "tests" / "scripts" / "run_rhyme_smoke_test.py",
-)
 
 
 class TtyBuffer(io.StringIO):
@@ -52,7 +48,6 @@ class ProgressBarTest(unittest.TestCase):
             (RHYME.ProgressBar(10), (5, 2, 3), "Building"),
             (WORDS.ProgressBar(10), (5, 2, 1), "Cleaning"),
             (IPA.ProgressBar("Regenerating en", 10), (5,), "Regenerating en"),
-            (SMOKE.ProgressBar("Sampling en", 10), (5, 2), "Sampling en"),
         ]
         for progress, update_args, label in cases:
             with self.subTest(label=label):
@@ -351,118 +346,6 @@ class RhymeDatabaseHelperTest(unittest.TestCase):
             RHYME.validate_release_version("release-1", Path("en.db"))
         with self.assertRaisesRegex(ValueError, "must include"):
             RHYME.validate_release_version("release-1", Path("en_release-10.db"))
-
-
-class SmokeHelperTest(unittest.TestCase):
-    def test_source_names_artifact_stems_and_scores_are_stable(self):
-        self.assertEqual(
-            SMOKE.source_name("en", "wiktionary"),
-            "wordlist_en_rhyme_eligible.txt",
-        )
-        self.assertEqual(
-            SMOKE.source_name("de", "espeak"),
-            "wordlist_de_espeak_rhyme_eligible.txt",
-        )
-        self.assertEqual(
-            SMOKE.artifact_stem("tr", "espeak", 50, "release-1"),
-            "tr_espeak_sample-50_release-1",
-        )
-        score = SMOKE.selection_score("seed", "en", "wiktionary", "row\n")
-        self.assertEqual(
-            score,
-            SMOKE.selection_score("seed", "en", "wiktionary", "row\n"),
-        )
-        self.assertNotEqual(
-            score,
-            SMOKE.selection_score("other", "en", "wiktionary", "row\n"),
-        )
-
-    def test_create_sample_selects_lowest_scores_in_source_order(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source = root / "source.txt"
-            sample = root / "nested" / "sample.txt"
-            lines = [f"word-{index}\t[\"/a/\"]\n" for index in range(8)]
-            source.write_text("".join(lines), encoding="utf-8")
-            input_words, sampled_words = SMOKE.create_sample(
-                source, sample, "en", "wiktionary", 3, "seed"
-            )
-            selected = set(
-                sorted(
-                    lines,
-                    key=lambda line: SMOKE.selection_score(
-                        "seed", "en", "wiktionary", line
-                    ),
-                )[:3]
-            )
-            expected = "".join(line for line in lines if line in selected)
-            self.assertEqual((input_words, sampled_words), (8, 3))
-            self.assertEqual(sample.read_text(encoding="utf-8"), expected)
-
-    def test_create_sample_rejects_empty_rows_without_replacing_output(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source = root / "source.txt"
-            sample = root / "sample.txt"
-            source.write_text('word\t["/a/"]\n\n', encoding="utf-8")
-            sample.write_text("previous\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "empty row"):
-                SMOKE.create_sample(source, sample, "en", "wiktionary", 1, "seed")
-            self.assertEqual(sample.read_text(encoding="utf-8"), "previous\n")
-
-    def test_write_manifest_is_atomic_and_pretty_printed(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            path = SMOKE.write_manifest(root, {"language": "en", "rows": 2})
-            self.assertEqual(path, root / "reports" / "smoke_manifest.json")
-            self.assertEqual(
-                json.loads(path.read_text(encoding="utf-8")),
-                {"language": "en", "rows": 2},
-            )
-            self.assertFalse(Path(f"{path}.part").exists())
-
-    def test_validate_database_accepts_the_production_schema(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            database = Path(temp_dir) / "sample.db"
-            connection = sqlite3.connect(database)
-            try:
-                connection.executescript(RHYME.SCHEMA)
-                connection.execute(
-                    "INSERT INTO dictionary VALUES (?, ?, ?, ?)",
-                    ("cat", "/kæt/", "tæk", "æ"),
-                )
-                connection.executescript(RHYME.INDEXES)
-                connection.commit()
-            finally:
-                connection.close()
-
-            self.assertEqual(
-                SMOKE.validate_database(database, 1),
-                {"integrity": "ok", "rows": 1, "unique_words": 1},
-            )
-
-    def test_validate_database_is_read_only_and_rejects_extra_indexes(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            missing = root / "missing.db"
-            with self.assertRaisesRegex(FileNotFoundError, "missing database"):
-                SMOKE.validate_database(missing, 0)
-            self.assertFalse(missing.exists())
-
-            database = root / "extra-index.db"
-            connection = sqlite3.connect(database)
-            try:
-                connection.executescript(RHYME.SCHEMA)
-                connection.executescript(RHYME.INDEXES)
-                connection.execute(
-                    "CREATE INDEX unexpected_word_index ON dictionary(word)"
-                )
-                connection.commit()
-            finally:
-                connection.close()
-
-            with self.assertRaisesRegex(RuntimeError, "unexpected dictionary indexes"):
-                SMOKE.validate_database(database, 0)
 
 
 if __name__ == "__main__":

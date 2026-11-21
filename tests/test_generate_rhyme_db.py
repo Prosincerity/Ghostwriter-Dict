@@ -253,13 +253,9 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                                 "SELECT name FROM sqlite_master WHERE type='index'"
                             )
                         }
-                        self.assertTrue(
-                            {
-                                "idx_ipa_reversed",
-                                "idx_assonance_reversed",
-                            }.issubset(indexes)
+                        self.assertEqual(
+                            indexes, {"idx_ipa_reversed", "idx_assonance_reversed"}
                         )
-                        self.assertNotIn("idx_rhyme_key_reversed", indexes)
                         connection.execute("PRAGMA case_sensitive_like = ON")
                         reversed_ipas = [
                             row[0]
