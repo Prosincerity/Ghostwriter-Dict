@@ -18,36 +18,10 @@ from pathlib import Path
 from typing import Iterable, TextIO
 
 from build_reports import archive_sources, sha256_file, write_json
+from progress import ProgressBar
 
 
 DEFAULT_LANGUAGES = ("en", "de", "tr")
-
-
-class ProgressBar:
-    def __init__(self, label: str, total: int, stream: TextIO = sys.stderr):
-        self.label = label
-        self.total = total
-        self.stream = stream
-        self.last_width = 0
-
-    def update(self, current: int) -> None:
-        if not self.stream.isatty():
-            return
-        fraction = min(current / self.total, 1.0) if self.total else 1.0
-        filled = round(30 * fraction)
-        bar = "#" * filled + "-" * (30 - filled)
-        text = (
-            f"\r{self.label} [{bar}] {fraction:6.2%} "
-            f"{current:,}/{self.total:,} words"
-        )
-        self.stream.write(text.ljust(self.last_width))
-        self.stream.flush()
-        self.last_width = max(self.last_width, len(text))
-
-    def finish(self) -> None:
-        if self.stream.isatty():
-            self.stream.write("\n")
-            self.stream.flush()
 
 
 def parse_args() -> argparse.Namespace:
@@ -195,7 +169,7 @@ def generate_language(
                 generated += generated_now
                 empty += empty_now
                 processed += len(batch)
-                progress.update(processed)
+                progress.show(processed)
 
         os.replace(part_path, output_path)
     except BaseException:

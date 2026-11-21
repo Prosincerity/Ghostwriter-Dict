@@ -44,24 +44,28 @@ class TtyBuffer(io.StringIO):
 class ProgressBarTest(unittest.TestCase):
     def test_progress_bars_render_and_finish_on_tty_streams(self):
         cases = [
-            (EXTRACT.ProgressBar(10), (5, 2, {"en": 1}), "Reading"),
-            (ESPEAK.ProgressBar("Generating en", 10), (5,), "Generating en"),
-            (RHYME.ProgressBar(10), (5, 2, 3), "Building"),
-            (WORDS.ProgressBar(10), (5, 2, 1), "Cleaning"),
-            (IPA.ProgressBar("Regenerating en", 10), (5,), "Regenerating en"),
+            (EXTRACT.ReadingProgress(10), lambda bar: bar.update(5, 2, {"en": 1}),
+             "Reading", "bytes records=2 words(en=1)"),
+            (ESPEAK.ProgressBar("Generating en", 10), lambda bar: bar.show(5),
+             "Generating en", "words"),
+            (RHYME.DatabaseProgress(10), lambda bar: bar.update(5, 2, 3),
+             "Building", "bytes lines=2 rows=3"),
+            (WORDS.WordCleanupProgress(10), lambda bar: bar.update(5, 2, 1),
+             "Cleaning words", "bytes words=2 kept=1"),
+            (IPA.ProgressBar("Validating IPA", 10, unit="bytes"), lambda bar: bar.show(5),
+             "Validating IPA", "bytes"),
         ]
-        for progress, update_args, label in cases:
+        for progress, update, label, counts in cases:
             with self.subTest(label=label):
                 stream = TtyBuffer()
                 progress.stream = stream
-                progress.update(*update_args)
+                update(progress)
                 progress.finish()
-                self.assertIn(label, stream.getvalue())
-                self.assertTrue(stream.getvalue().endswith("\n"))
+                self.assertEqual(stream.getvalue(), f"\r{label} [{'#' * 15}{'-' * 15}] 50.00% 5/10 {counts}\n")
 
     def test_progress_bars_are_silent_for_non_tty_streams(self):
         stream = io.StringIO()
-        progress = WORDS.ProgressBar(0, stream=stream)
+        progress = WORDS.WordCleanupProgress(0, stream=stream)
         progress.update(0, 0, 0)
         progress.finish()
         self.assertEqual(stream.getvalue(), "")

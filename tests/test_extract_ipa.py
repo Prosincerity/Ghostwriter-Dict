@@ -30,6 +30,7 @@ class ExtractIpaTest(unittest.TestCase):
             extractor = scripts / "extract_ipa.py"
             shutil.copy2(EXTRACTOR, extractor)
             shutil.copy2(EXTRACTOR.parent / "build_reports.py", scripts / "build_reports.py")
+            shutil.copy2(EXTRACTOR.parent / "progress.py", scripts)
             source = root / "entries.jsonl.gz"
             write_gzip_jsonl(source, [{
                 "word": "Hello", "lang_code": "en", "sounds": [{"ipa": "/ˈhɛloʊ/"}],

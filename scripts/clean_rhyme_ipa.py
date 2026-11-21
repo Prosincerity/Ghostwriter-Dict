@@ -9,7 +9,7 @@ import sys
 import unicodedata
 from collections import Counter
 from pathlib import Path
-from typing import Optional, TextIO
+from typing import Optional
 
 from build_reports import publish_files
 from clean_rhyme_words import POLICY_VERSION, parse_word_row, write_json_line
@@ -18,6 +18,7 @@ from ipa_tokens import (
     LANGUAGES, NON_PHONEME_MARKERS, PROSODY_MARKERS, STRESS_MARKERS,
     token_is_vowel, tokenize_ipa,
 )
+from progress import ProgressBar
 
 MAX_OPTIONAL_VARIANTS = 8
 WRAPPERS = {"/": "/", "[": "]"}
@@ -256,34 +257,6 @@ def is_extreme_mismatch(comparison: dict[str, object], threshold: float) -> bool
     )
 
 
-class ProgressBar:
-    def __init__(self, label: str, total: int, stream: TextIO = sys.stderr,
-                 unit: str = "words"):
-        self.label = label
-        self.total = total
-        self.stream = stream
-        self.unit = unit
-        self.last_width = 0
-
-    def update(self, current: int) -> None:
-        if not self.stream.isatty():
-            return
-        fraction = min(current / self.total, 1.0) if self.total else 1.0
-        filled = round(30 * fraction)
-        message = (
-            f"\r{self.label} [{'#' * filled}{'-' * (30 - filled)}] "
-            f"{fraction:6.2%} {current:,}/{self.total:,} {self.unit}"
-        )
-        self.stream.write(message.ljust(self.last_width))
-        self.stream.flush()
-        self.last_width = max(self.last_width, len(message))
-
-    def finish(self) -> None:
-        if self.stream.isatty():
-            self.stream.write("\n")
-            self.stream.flush()
-
-
 def output_paths(wiki_output: Path, espeak_output: Path) -> dict[str, Path]:
     reports_dir = wiki_output.parent / "reports" / "cleaning"
     stem = wiki_output.stem
@@ -484,8 +457,8 @@ def clean_ipa_wordlists(
                                     else:
                                         stage_ipa(source_name, word, candidate)
                             if line_number % 1_000 == 0:
-                                scan_progress.update(scanned_bytes)
-                    scan_progress.update(scanned_bytes)
+                                scan_progress.show(scanned_bytes)
+                    scan_progress.show(scanned_bytes)
             finally:
                 scan_progress.finish()
 
@@ -594,7 +567,7 @@ def clean_ipa_wordlists(
                             (word, word),
                         )
                     processed += 1
-                    progress.update(processed)
+                    progress.show(processed)
 
             try:
                 for (word,) in staging.execute(

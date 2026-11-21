@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import IO, Iterable, Mapping, TextIO
 
 from build_reports import archive_sources, publish_files, sha256_file, write_json
+from progress import ProgressBar
 
 
 # Square brackets and slashes are valid IPA delimiters. Only values whose
@@ -57,36 +58,17 @@ class LanguageExtraction:
     junk_ipa_dropped: int = 0
 
 
-class ProgressBar:
+class ReadingProgress(ProgressBar):
     def __init__(self, total_bytes: int, stream: TextIO = sys.stderr):
-        self.total_bytes = total_bytes
-        self.stream = stream
-        self.last_width = 0
+        super().__init__("Reading", total_bytes, stream, unit="bytes")
 
     def update(
         self, current_bytes: int, records: int, words_by_language: dict[str, int]
     ) -> None:
-        if not self.stream.isatty():
-            return
-        fraction = min(current_bytes / self.total_bytes, 1.0) if self.total_bytes else 1.0
-        filled = round(30 * fraction)
-        bar = "#" * filled + "-" * (30 - filled)
         words = " ".join(
             f"{lang_code}={count:,}" for lang_code, count in words_by_language.items()
         )
-        text = (
-            f"\rReading [{bar}] {fraction:6.2%} "
-            f"{current_bytes:,}/{self.total_bytes:,} bytes "
-            f"records={records:,} words({words})"
-        )
-        self.stream.write(text.ljust(self.last_width))
-        self.stream.flush()
-        self.last_width = max(self.last_width, len(text))
-
-    def finish(self) -> None:
-        if self.stream.isatty():
-            self.stream.write("\n")
-            self.stream.flush()
+        self.show(current_bytes, f"records={records:,} words({words})")
 
 
 def is_usable_ipa(value: object) -> bool:
@@ -254,7 +236,7 @@ def main() -> None:
     input_sizes = [path.stat().st_size for path in args.inputs]
     total_input_bytes = sum(input_sizes)
     completed_input_bytes = 0
-    progress = ProgressBar(total_input_bytes)
+    progress = ReadingProgress(total_input_bytes)
     progress.update(0, 0, {code: 0 for code in lang_codes})
 
     for input_path, input_size in zip(args.inputs, input_sizes):

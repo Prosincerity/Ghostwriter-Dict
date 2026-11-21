@@ -10,7 +10,7 @@ from pathlib import Path
 
 from build_reports import publish_files
 from clean_rhyme_ipa import clean_pronunciation
-from clean_rhyme_words import POLICY_VERSION, ProgressBar, clean_headword
+from clean_rhyme_words import POLICY_VERSION, WordCleanupProgress, clean_headword
 from extract_ipa import is_usable_ipa
 from ipa_tokens import STRESS_MARKERS
 from raw_entries import raw_paths
@@ -67,7 +67,7 @@ def prepare(directory, lang):
                 print(json.dumps(dict(word=word, reason=reason, **details)), file=out["audit"])
 
             inputs = raw_paths(directory, lang)
-            progress = ProgressBar(sum(path.stat().st_size for path in inputs))
+            progress = WordCleanupProgress(sum(path.stat().st_size for path in inputs))
             cleanup.callback(progress.finish)
             consumed = 0
             for path in inputs:

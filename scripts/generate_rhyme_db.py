@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Iterable, Optional, TextIO
 
 from ipa_tokens import LANGUAGES, NON_PHONEME_MARKERS, token_is_vowel, tokenize_ipa
+from progress import ProgressBar
 
 
 SCHEMA = """
@@ -41,31 +42,12 @@ CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 """
 
 
-class ProgressBar:
+class DatabaseProgress(ProgressBar):
     def __init__(self, total_bytes: int, stream: TextIO = sys.stderr):
-        self.total_bytes = total_bytes
-        self.stream = stream
-        self.last_width = 0
+        super().__init__("Building", total_bytes, stream, unit="bytes")
 
     def update(self, current_bytes: int, lines: int, rows: int) -> None:
-        if not self.stream.isatty():
-            return
-        fraction = min(current_bytes / self.total_bytes, 1.0) if self.total_bytes else 1.0
-        filled = round(30 * fraction)
-        bar = "#" * filled + "-" * (30 - filled)
-        message = (
-            f"\rBuilding [{bar}] {fraction:6.2%} "
-            f"{current_bytes:,}/{self.total_bytes:,} bytes "
-            f"lines={lines:,} rows={rows:,}"
-        )
-        self.stream.write(message.ljust(self.last_width))
-        self.stream.flush()
-        self.last_width = max(self.last_width, len(message))
-
-    def finish(self) -> None:
-        if self.stream.isatty():
-            self.stream.write("\n")
-            self.stream.flush()
+        self.show(current_bytes, f"lines={lines:,} rows={rows:,}")
 
 
 def derived_values(tokens: list[str], lang_code: str) -> tuple[str, str]:
@@ -108,7 +90,7 @@ def iter_rows(
     input_path: Path,
     lang_code: str,
     unknown: Counter[str],
-    progress: ProgressBar,
+    progress: DatabaseProgress,
 ) -> Iterable[tuple[str, str, str, str]]:
     lines = 0
     rows = 0
@@ -164,7 +146,7 @@ def build_database(
     part_path.unlink(missing_ok=True)
     unknown: Counter[str] = Counter()
     row_count = 0
-    progress = ProgressBar(input_path.stat().st_size)
+    progress = DatabaseProgress(input_path.stat().st_size)
     connection: Optional[sqlite3.Connection] = None
 
     try:

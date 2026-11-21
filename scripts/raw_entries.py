@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from build_reports import publish_files
-from extract_ipa import ProgressBar, input_position, iter_ipa_fields, open_jsonl
+from extract_ipa import ReadingProgress, input_position, iter_ipa_fields, open_jsonl
 
 
 def raw_paths(directory, lang):
@@ -17,7 +17,7 @@ def extract(archives, directories):
     paths = {lang: raw_paths(directory, lang) for lang, directory in directories.items()}
     counts = Counter()
     words = {lang: set() for lang in paths}
-    progress = ProgressBar(sum(path.stat().st_size for path in archives))
+    progress = ReadingProgress(sum(path.stat().st_size for path in archives))
     completed = 0
     with ExitStack() as cleanup:
         with ExitStack() as streams:

@@ -13,6 +13,7 @@ from typing import Optional, TextIO
 
 from build_reports import publish_files
 from ipa_tokens import LANGUAGES
+from progress import ProgressBar
 
 
 POLICY_VERSION = "rhyme-cleanup-v19"
@@ -49,31 +50,12 @@ HEADWORD_TRANSLATION = str.maketrans(
 )
 
 
-class ProgressBar:
+class WordCleanupProgress(ProgressBar):
     def __init__(self, total_bytes: int, stream: TextIO = sys.stderr):
-        self.total_bytes = total_bytes
-        self.stream = stream
-        self.last_width = 0
+        super().__init__("Cleaning words", total_bytes, stream, unit="bytes")
 
     def update(self, current_bytes: int, words: int, kept: int) -> None:
-        if not self.stream.isatty():
-            return
-        fraction = min(current_bytes / self.total_bytes, 1.0) if self.total_bytes else 1.0
-        filled = round(30 * fraction)
-        bar = "#" * filled + "-" * (30 - filled)
-        message = (
-            f"\rCleaning words [{bar}] {fraction:6.2%} "
-            f"{current_bytes:,}/{self.total_bytes:,} bytes "
-            f"words={words:,} kept={kept:,}"
-        )
-        self.stream.write(message.ljust(self.last_width))
-        self.stream.flush()
-        self.last_width = max(self.last_width, len(message))
-
-    def finish(self) -> None:
-        if self.stream.isatty():
-            self.stream.write("\n")
-            self.stream.flush()
+        self.show(current_bytes, f"words={words:,} kept={kept:,}")
 
 
 def output_paths(output_path: Path) -> dict[str, Path]:
@@ -180,7 +162,7 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
     counts = Counter()
     rejections = Counter()
     transformations = Counter()
-    progress = ProgressBar(input_path.stat().st_size)
+    progress = WordCleanupProgress(input_path.stat().st_size)
     staging: Optional[sqlite3.Connection] = None
     try:
         staging = sqlite3.connect(staging_path)
