@@ -77,6 +77,7 @@ Reports live in `out/<lang>/reports/`:
 | `downloading/` | Archive fingerprints and download status (complete build) |
 | `reading/` | Extraction counts and source fingerprints |
 | `ipa_generation/` | eSpeak output counts and words producing empty IPA |
+| `ipa_reversal/` | Key-format validation, phonetic token frequencies, source-boundary evidence and review examples |
 | `cleaning/` | Word and IPA counts, changes, rejections, comparisons, and summary |
 
 IPA wordlists are UTF-8 TSV with one JSON array per word:
@@ -94,15 +95,16 @@ remain in separate files.
 2. Clean headwords and source IPA, merge variants, and write missing-word and repair inputs. Review `reports/cleaning/summary.md` and its structured audit. See [CLEANING_RULES.md](CLEANING_RULES.md) for the exact rules.
 3. Generate missing IPA from the cleaned wordlist with the existing adaptive eSpeak batches.
 4. Validate source IPA against eSpeak, repair rejected candidates, and apply the configured extreme-mismatch policy.
-5. Build the six SQLite indexes and run SQLite integrity checks before replacing each database.
+5. Audit the source pronunciations, build the six SQLite indexes, verify each key restores its input, and run SQLite integrity checks before publishing each database and its audit report.
 6. Package the six gzip archives and write the release checksums. Packaging is local.
 
 **SQLite.** Each `(word, ipa)` pair becomes one row with `ipa_reversed` and
 `assonance_reversed` search values. Complete audited phoneme tokens are
-reversed; vowels in `assonance_reversed` remain space-delimited. Unknown IPA
+reversed into space-separated fields. Format 2 preserves the exact IPA spelling,
+including source whitespace and delimiters. Vowels in `assonance_reversed` remain space-delimited. Unknown IPA
 tokens stop the build and preserve the previous database. For SQLite prefix
 queries, enable `PRAGMA case_sensitive_like = ON`. Compound identity-rhyme
-filtering belongs in the on-device consumer.
+filtering belongs in the on-device consumer. See [IPA reversal and consumer migration](IPA_REVERSAL.md).
 
 ## Validation
 
@@ -118,8 +120,8 @@ Tests use temporary build directories and a fake eSpeak executable.
 The round-trip test includes eight rows sampled from the local English, German
 and Turkish `kaikki-v20261030` Wiktionary and eSpeak databases. The first five
 columns of `tests/fixtures/ipa_round_trip.tsv` identify the source and sampled
-values. The final column gives the expected result of tokenizing and reversing
-the stored key again. The sample data carries the dictionary data license.
+values. The fixture records both the historical double reversal and the
+expected format-2 key. Tests require exact restoration of every original IPA.
 
 A second frozen fixture, `tests/fixtures/ipa_random_release.tsv`, contains 500
 distinct words per language from that same release, with all IPA variants
@@ -129,19 +131,9 @@ words. The score is the unsigned big-endian value of a 16-byte BLAKE2b digest
 of the seed `ipa-round-trip-v1`, language code, source name, and word, encoded
 as UTF-8 and separated by NUL bytes. These data are also CC BY-SA 4.0.
 
-The normal suite verifies the sampled database keys and exercises double
-reversal. To require exact string recovery for every sampled pronunciation, run
-the stricter diagnostic below. It reports counts and examples and exits with a
-failure when a key loses information.
-
-```bash
-GHOSTWRITER_REQUIRE_EXACT_IPA=1 python3 -B -m unittest discover -s tests -p test_generate_rhyme_db.py -k random_release
-```
-
-For exact display, read `dictionary.ipa`. The search key omits wrappers and
-spaces. It can also lose token boundaries: German eSpeak `gast` has IPA
-`ɡˈast`, but its reversed key `tsaˈɡ` begins with the German token `ts`.
-Applying the same reversal again produces `ɡˈats`.
+The normal suite checks the release fixtures, seeded inventory sequences, and
+exact SQLite round trips. The [key format guide](IPA_REVERSAL.md) documents
+source-specific parsing, full-source audit commands, and suffix queries.
 
 ## Licensing and attribution
 

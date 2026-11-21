@@ -55,6 +55,10 @@ class LosslessTest(unittest.TestCase):
         self.assertIn(("unknown","_"), analyze("t_s","de").issues)
         self.assertIn(("inferred_multigraph","ts"), analyze("ts","de").issues)
         self.assertIn(("dangling_tie","t͡"), analyze("t͡.","de").issues)
+        for transcription in ("t͡ɮ", "ɮ͜a"):
+            self.check(transcription, "en", "wiktionary", [transcription])
+            self.assertIn(("unknown", "ɮ"), analyze(transcription, "en").issues)
+        self.check("ɮz_a", "en", "espeak", ["ɮz", "_", "a"])
 
     def test_canonical_and_collision_free_wire_format(self):
         tokens = (" ", "\\", r"\u{20}", "\n", "\u2002", "[", "]", "a ̩")

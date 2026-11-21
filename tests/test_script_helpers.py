@@ -300,13 +300,13 @@ class RhymeDatabaseHelperTest(unittest.TestCase):
         self.assertTrue(ipa_tokens.token_is_vowel("ʷáː", "en"))
         self.assertFalse(ipa_tokens.token_is_vowel("kʰ", "en"))
 
-    def test_parse_wordlist_line_normalizes_and_rejects_invalid_shapes(self):
+    def test_parse_wordlist_line_normalizes_only_the_headword_and_rejects_invalid_shapes(self):
         path = Path("fixture.txt")
         word, ipas = RHYME.parse_wordlist_line(
-            path, 3, 'Café\t["/kafé/", "/kafé/"]\n'
+            path, 3, 'Café\t["/kafé/", "/kafé/"]\n'
         )
         self.assertEqual(word, "Café")
-        self.assertEqual(ipas, ["/kafé/", "/kafé/"])
+        self.assertEqual(ipas, ["/kafé/", "/kafé/"])
 
         invalid = ("\n", "word only\n", "word\t{}\n", "word\t[]\n", 'word\t[""]\n')
         for line in invalid:

@@ -13,6 +13,7 @@ from ipa_tokens import (
 SOURCES = ("wiktionary", "espeak", "espeak-separated", "espeak-tied")
 TIES = frozenset("͜͡\u200d")
 PREFIX = PREFIX_MODIFIERS | frozenset("ᵑᶮ")
+NON_SEGMENT_LETTERS = PREFIX | STRESS_MARKERS | PROSODY_MARKERS
 POSTFIX = POSTFIX_MODIFIERS | frozenset("ʼ")
 BOUNDARIES = IGNORED_SEPARATORS | frozenset("~·,;-#‧\u200c")
 PAIRS = {"[": "]", "(": ")", "⟨": "⟩", "⁽": "⁾"}
@@ -56,6 +57,11 @@ def after_marks(ipa: str, pos: int) -> int:
     return pos
 
 
+def opaque_component(char: str) -> bool:
+    """An unfamiliar sound symbol may still be explicitly joined by the source."""
+    return char.isalpha() and char not in NON_SEGMENT_LETTERS and not is_modifier(char)
+
+
 def segment_end(ipa, first, base, lang, source, explicit, issues):
     size = len(ipa)
     i = after_marks(ipa, first + 1)
@@ -65,19 +71,23 @@ def segment_end(ipa, first, base, lang, source, explicit, issues):
             # A combining mark can occur on either side of the tie in the
             # original encoding. Neither the tie nor the marks are reordered.
             right = after_marks(ipa, i + 1)
-            if right >= size or not base_letter(ipa[right], lang):
+            if right >= size or not (base_letter(ipa[right], lang) or opaque_component(ipa[right])):
                 issues.append(("dangling_tie", ipa[first:right]))
                 i = right
                 break
             i = after_marks(ipa, right + 1)
+            if not base_letter(ipa[right], lang):
+                issues.append(("unknown", ipa[right:i]))
             joined = True
             continue
         right_base = base_letter(ipa[i], lang)
-        if not right_base:
+        if not right_base and not (explicit and opaque_component(ipa[i])):
             break
         end = after_marks(ipa, i + 1)
         pair = base + right_base
         if explicit:
+            if not right_base:
+                issues.append(("unknown", ipa[i:end]))
             i = end
             continue
         if source == "espeak-tied" or joined or (end < size and ipa[end] in TIES):
@@ -164,6 +174,11 @@ def analyze(ipa: str, lang: str, source: str = "wiktionary") -> Analysis:
         while i < size and ipa[i] in PREFIX:
             i += 1
         base = base_letter(ipa[i], lang) if i < size else ""
+        if not base and i < size and opaque_component(ipa[i]):
+            end = after_marks(ipa, i + 1)
+            if explicit or (end < size and ipa[end] in TIES):
+                issues.append(("unknown", ipa[i:end]))
+                base = ipa[i]
         if not base:
             if i > start:
                 reason = "detached_modifier" if i > prefix_start else "detached_stress"

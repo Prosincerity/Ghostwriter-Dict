@@ -21,6 +21,7 @@ import clean_rhyme_words as words
 import generate_espeak_ipa as g2p
 from build_reports import sha256_file, write_json
 from generate_rhyme_db import build_database
+from ipa_audit import audit_file
 from prepare_entries import prepare, prepared_paths
 from raw_entries import extract, raw_paths
 
@@ -200,11 +201,30 @@ def build(args):
                   [args.release_version, args.extreme_distance, args.replace_extreme_mismatches])
 
     for lang, directory in dirs.items():
+        audit_dir = directory / "reports" / "ipa_reversal"
+        for origin in ("wiktionary", "espeak"):
+            raw = bool(args.archive) and origin == "wiktionary"
+            if raw:
+                original = raw_paths(directory, lang)[0]
+            else:
+                suffix = "_espeak" if origin == "espeak" else ""
+                original = directory / f"wordlist_{lang}{suffix}_ipa.txt"
+            scope = "canonical" if origin == "wiktionary" and not raw else "source"
+            report = audit_dir / f"{origin}_{scope}.json"
+            cache.run(lambda: audit_file(original, report, lang, origin, raw), directory,
+                      f"audit_{origin}_{scope}", [original], [report],
+                      ["ipa_reversal", "ipa_audit", "ipa_tokens", "progress"], [origin, raw])
         for suffix in ("", "_espeak"):
             source = directory / f"wordlist_{lang}{suffix}_rhyme_eligible.txt"
             database = directory / f"{lang}{suffix}_{args.release_version}.db"
-            cache.run(lambda: build_database(source, database, lang, args.release_version), directory,
-                      f"database{suffix}", [source], [database], ["generate_rhyme_db", "ipa_tokens", "progress"], args.release_version)
+            source_format = "espeak" if suffix else "wiktionary"
+            audit = audit_dir / f"{source_format}_eligible.json"
+            cache.run(lambda: build_database(source, database, lang, args.release_version, source_format, audit,
+                                             executable if suffix else None), directory,
+                      f"database{suffix}", [source, *(engine if suffix else [])], [database, audit],
+                      ["generate_rhyme_db", "ipa_reversal", "ipa_audit", "ipa_tokens", "progress",
+                       *(["generate_espeak_ipa"] if suffix else [])],
+                      [args.release_version, source_format, version if suffix else None])
             databases.append(database)
 
     cache.run(lambda: subprocess.run([sys.executable, SCRIPTS / "package_release.py",

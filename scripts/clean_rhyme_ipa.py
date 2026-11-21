@@ -16,7 +16,7 @@ from clean_rhyme_words import POLICY_VERSION, parse_word_row, write_json_line
 from generate_espeak_ipa import call_espeak, resolve_espeak
 from ipa_tokens import (
     LANGUAGES, NON_PHONEME_MARKERS, PROSODY_MARKERS, STRESS_MARKERS,
-    token_is_vowel, tokenize_ipa,
+    analysis_tokens, token_is_vowel,
 )
 from progress import ProgressBar
 
@@ -118,7 +118,7 @@ def has_misplaced_stress(tokens: list[str], lang_code: str) -> bool:
 
 
 def clean_pronunciation(
-    ipa: str, lang_code: str
+    ipa: str, lang_code: str, source: str = "wiktionary"
 ) -> tuple[list[str], list[str], list[dict[str, object]]]:
     """Return valid normalized variants, transformation names, and rejects."""
     if any(unicodedata.category(character) == "Cc" for character in ipa):
@@ -173,7 +173,7 @@ def clean_pronunciation(
             reason = "orthographic_dotless_i"
         else:
             unknown: Counter[str] = Counter()
-            tokens = tokenize_ipa(candidate, lang_code, unknown)
+            tokens = analysis_tokens(candidate, lang_code, unknown, espeak=source == "espeak")
             if unknown:
                 reason = "unrecognized_tokens"
                 details["tokens"] = dict(sorted(unknown.items()))
@@ -191,10 +191,10 @@ def clean_pronunciation(
     return list(dict.fromkeys(valid)), list(dict.fromkeys(transformations)), rejects
 
 
-def comparison_tokens(ipa: str, lang_code: str) -> tuple[list[str], list[str]]:
+def comparison_tokens(ipa: str, lang_code: str, *, espeak: bool = False) -> tuple[list[str], list[str]]:
     """Return the phoneme sequence and its last stressed rhyme tail."""
     unknown: Counter[str] = Counter()
-    tokens = tokenize_ipa(ipa, lang_code, unknown)
+    tokens = analysis_tokens(ipa, lang_code, unknown, espeak=espeak)
     if unknown:
         raise ValueError(f"unrecognized IPA tokens: {dict(sorted(unknown.items()))}")
     phonemes = [token for token in tokens if token not in NON_PHONEME_MARKERS]
@@ -233,7 +233,7 @@ def compare_pronunciations(wiktionary_ipa: str, espeak_ipa: str,
                            lang_code: str) -> dict[str, object]:
     """Score phoneme divergence and expose the stressed rhyme tails separately."""
     wiktionary_tokens, wiktionary_tail = comparison_tokens(wiktionary_ipa, lang_code)
-    espeak_tokens, espeak_tail = comparison_tokens(espeak_ipa, lang_code)
+    espeak_tokens, espeak_tail = comparison_tokens(espeak_ipa, lang_code, espeak=True)
     edits = phoneme_edit_distance(wiktionary_tokens, espeak_tokens)
     denominator = max(len(wiktionary_tokens), len(espeak_tokens))
     return {
@@ -435,7 +435,7 @@ def clean_ipa_wordlists(
                             counts[f"{source_name}_input_words"] += 1
                             counts[f"{source_name}_input_pronunciations"] += len(ipas)
                             for ipa in ipas:
-                                normalized, transformations, rejected = clean_pronunciation(ipa, lang_code)
+                                normalized, transformations, rejected = clean_pronunciation(ipa, lang_code, source_name)
                                 if transformations or (normalized and normalized != [ipa]):
                                     write_json_line(changes, {
                                         "source": source_name, "word": word,
@@ -480,7 +480,7 @@ def clean_ipa_wordlists(
                 if len(generated) != len(words):
                     raise ValueError("eSpeak result count does not match input count")
                 for word, raw_ipa in zip(words, generated):
-                    normalized, transformations, rejected = clean_pronunciation(raw_ipa, lang_code)
+                    normalized, transformations, rejected = clean_pronunciation(raw_ipa, lang_code, "espeak")
                     needs_regeneration = staging.execute(
                         "SELECT 1 FROM rejected WHERE source = 'wiktionary' AND word = ? LIMIT 1",
                         (word,),

@@ -13,16 +13,21 @@ lossless build stage.
 
 import argparse
 import json
-import os
 import re
 import sqlite3
+import subprocess
 import sys
 import unicodedata
 from collections import Counter
+from itertools import islice
 from pathlib import Path
 from typing import Iterable, Optional, TextIO
 
-from ipa_tokens import LANGUAGES, NON_PHONEME_MARKERS, token_is_vowel, tokenize_ipa
+from build_reports import publish_files, write_json
+from generate_espeak_ipa import call_espeak
+from ipa_audit import Audit
+from ipa_reversal import SOURCES, analyze_source, verified_key
+from ipa_tokens import LANGUAGES, analysis_tokens, token_is_vowel
 from progress import ProgressBar
 
 
@@ -50,11 +55,10 @@ class DatabaseProgress(ProgressBar):
         self.show(current_bytes, f"lines={lines:,} rows={rows:,}")
 
 
-def derived_values(tokens: list[str], lang_code: str) -> tuple[str, str]:
-    """Compute reversed full IPA and its reversed vowel sequence."""
-    ipa_reversed = "".join(reversed(tokens))
-    vowel_tokens = [token for token in tokens if token_is_vowel(token, lang_code)]
-    return ipa_reversed, " ".join(reversed(vowel_tokens))
+def assonance_key(ipa: str, lang: str, source: str) -> str:
+    # This established index uses the cleanup policy's normalized vowel view.
+    tokens = analysis_tokens(ipa, lang, espeak=source.startswith("espeak"))
+    return " ".join(token for token in reversed(tokens) if token_is_vowel(token, lang))
 
 
 def parse_wordlist_line(path: Path, line_number: int, line: str) -> tuple[str, list[str]]:
@@ -82,8 +86,21 @@ def parse_wordlist_line(path: Path, line_number: int, line: str) -> tuple[str, l
             )
         if any(unicodedata.category(char) == "Cc" for char in value):
             raise ValueError(f"{path}:{line_number}: IPA contains a control character")
-        ipas.append(unicodedata.normalize("NFC", value.strip()))
+        ipas.append(value)
     return word, ipas
+
+
+def input_rows(path, lang, executable):
+    """Fetch optional engine boundaries once per TSV word, shared by all variants."""
+    with path.open(encoding="utf-8") as stream:
+        lines = enumerate(stream, start=1)
+        while batch := list(islice(lines, 1000)):
+            rows = [(number, len(line.encode("utf-8")), *parse_wordlist_line(path, number, line))
+                    for number, line in batch]
+            references = (call_espeak(executable, lang, [row[2] for row in rows], boundaries=True)
+                          if executable else [None] * len(rows))
+            for row, reference in zip(rows, references, strict=True):
+                yield (*row, reference)
 
 
 def iter_rows(
@@ -91,31 +108,36 @@ def iter_rows(
     lang_code: str,
     unknown: Counter[str],
     progress: DatabaseProgress,
+    source_format: str = "wiktionary",
+    audit: Audit | None = None,
+    boundary_espeak: str | None = None,
 ) -> Iterable[tuple[str, str, str, str]]:
     lines = 0
     rows = 0
     bytes_processed = 0
-    with input_path.open("r", encoding="utf-8") as source:
-        for lines, line in enumerate(source, start=1):
-            bytes_processed += len(line.encode("utf-8"))
-            word, ipas = parse_wordlist_line(input_path, lines, line)
-            for ipa in ipas:
-                candidate_unknown: Counter[str] = Counter()
-                tokens = tokenize_ipa(ipa, lang_code, candidate_unknown)
-                if candidate_unknown:
-                    unknown.update(candidate_unknown)
-                    raise ValueError(
-                        f"{input_path}:{lines}: unrecognized IPA tokens "
-                        f"for {word!r}, {ipa!r}: {dict(sorted(candidate_unknown.items()))}"
-                    )
-                if not any(token not in NON_PHONEME_MARKERS for token in tokens):
-                    raise ValueError(f"{input_path}:{lines}: no phoneme for {word!r}, {ipa!r}")
-                ipa_reversed, assonance = derived_values(tokens, lang_code)
-                rows += 1
-                yield word, ipa, ipa_reversed, assonance
-            if lines % 1_000 == 0:
-                progress.update(bytes_processed, lines, rows)
-        progress.update(input_path.stat().st_size, lines, rows)
+    for lines, size, word, ipas, reference in input_rows(input_path, lang_code, boundary_espeak):
+        bytes_processed += size
+        for ipa in ipas:
+            parsed, evidence = analyze_source(ipa, lang_code, source_format, reference)
+            candidate_unknown = Counter(value for reason, value in parsed.issues if reason == "unknown")
+            if candidate_unknown:
+                unknown.update(candidate_unknown)
+                raise ValueError(f"{input_path}:{lines}: unrecognized IPA tokens "
+                                 f"for {word!r}, {ipa!r}: {dict(candidate_unknown)}")
+            if not parsed.segments:
+                raise ValueError(f"{input_path}:{lines}: no phoneme for {word!r}, {ipa!r}")
+            try:
+                ipa_reversed = verified_key(ipa, parsed)
+            except ValueError as error:
+                raise ValueError(f"{lang_code}/{source_format} {input_path}:{lines} {word!r}: {error}") from error
+            assonance = assonance_key(ipa, lang_code, source_format)
+            if audit is not None:
+                audit.record(word, ipa, parsed, evidence, reference)
+            rows += 1
+            yield word, ipa, ipa_reversed, assonance
+        if lines % 1_000 == 0:
+            progress.update(bytes_processed, lines, rows)
+    progress.update(input_path.stat().st_size, lines, rows)
 
 
 def validate_release_version(release_version: str, output_path: Path) -> None:
@@ -134,7 +156,9 @@ def validate_release_version(release_version: str, output_path: Path) -> None:
 
 
 def build_database(
-    input_path: Path, output_path: Path, lang_code: str, release_version: str
+    input_path: Path, output_path: Path, lang_code: str, release_version: str,
+    source_format: str = "wiktionary", report_path: Path | None = None,
+    boundary_espeak: str | None = None,
 ) -> tuple[int, int, Counter[str]]:
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
@@ -143,8 +167,22 @@ def build_database(
     validate_release_version(release_version, output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     part_path = output_path.with_name(f"{output_path.name}.part")
-    part_path.unlink(missing_ok=True)
     unknown: Counter[str] = Counter()
+    audit = Audit(lang_code, source_format, input_path, "database_input")
+    if report_path is None:
+        report_path = output_path.parent / "reports" / "ipa_reversal" / f"{output_path.stem}.json"
+    report_part = report_path.with_name(report_path.name + ".part")
+    destinations = [input_path, output_path, part_path, report_path, report_part, Path(f"{report_part}.part")]
+    if len({path.resolve() for path in destinations}) != len(destinations):
+        raise ValueError("input, database, report and staging paths must be distinct")
+    if source_format not in SOURCES or lang_code not in LANGUAGES:
+        raise ValueError("unsupported IPA source or language")
+    part_path.unlink(missing_ok=True)
+    if boundary_espeak:
+        if source_format != "espeak":
+            raise ValueError("engine boundary lookup requires the espeak source")
+        audit.engine = subprocess.check_output([boundary_espeak, "--version"], text=True,
+                                               stdin=subprocess.DEVNULL).strip()
     row_count = 0
     progress = DatabaseProgress(input_path.stat().st_size)
     connection: Optional[sqlite3.Connection] = None
@@ -153,10 +191,11 @@ def build_database(
         connection = sqlite3.connect(part_path)
         connection.execute("PRAGMA journal_mode = OFF")
         connection.execute("PRAGMA synchronous = OFF")
+        connection.execute("PRAGMA user_version = 2")
         connection.executescript(SCHEMA)
         insert = "INSERT INTO dictionary VALUES (?, ?, ?, ?)"
         for word, ipa, ipa_reversed, assonance in iter_rows(
-            input_path, lang_code, unknown, progress
+            input_path, lang_code, unknown, progress, source_format, audit, boundary_espeak
         ):
             try:
                 connection.execute(insert, (word, ipa, ipa_reversed, assonance))
@@ -174,11 +213,13 @@ def build_database(
         ).fetchone()[0]
         connection.close()
         connection = None
-        os.replace(part_path, output_path)
+        write_json(report_part, audit.report())
+        publish_files([(part_path, output_path), (report_part, report_path)])
     except BaseException:
         if connection is not None:
             connection.close()
         part_path.unlink(missing_ok=True)
+        report_part.unlink(missing_ok=True)
         raise
     finally:
         progress.finish()
@@ -190,6 +231,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a versioned SQLite rhyme index.")
     parser.add_argument("input", type=Path, help="wordlist_<lang>_ipa.txt input")
     parser.add_argument("output", type=Path, help="versioned output .db path")
+    parser.add_argument("--source", choices=SOURCES, default="wiktionary")
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--boundary-espeak", help="recover matching eSpeak phoneme boundaries")
     parser.add_argument("--lang-code", choices=LANGUAGES, required=True)
     parser.add_argument(
         "--release-version",
@@ -203,9 +247,9 @@ def main() -> None:
     args = parse_args()
     try:
         rows, words, unknown = build_database(
-            args.input, args.output, args.lang_code, args.release_version
+            args.input, args.output, args.lang_code, args.release_version, args.source, args.report, args.boundary_espeak
         )
-    except (FileNotFoundError, OSError, sqlite3.Error, UnicodeError, ValueError) as error:
+    except (OSError, sqlite3.Error, subprocess.SubprocessError, RuntimeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from error
 

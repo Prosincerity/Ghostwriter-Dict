@@ -62,7 +62,7 @@ This project modifies the source data by:
 - auditing valid Wiktionary pronunciations against eSpeak-generated IPA and
   moving extreme mismatches to the eSpeak list by default in build workflows
   (the report-only mode keeps them in the Wiktionary list); and
-- deriving reversed IPA and vowel-only search values for rhyme indexes.
+- deriving reversible, space-separated phonetic token keys and vowel-only search values, and aggregating source notation and token diagnostics.
 
 If additional G2P systems or data sources are incorporated later, their
 provenance and the nature of those additions must also be documented.

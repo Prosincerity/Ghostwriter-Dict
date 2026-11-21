@@ -14,7 +14,8 @@ changes.
 - `scripts/generate_espeak_ipa.py`: missing-IPA generation
 - `scripts/clean_rhyme_words.py`: written-word cleanup and word audit reports
 - `scripts/clean_rhyme_ipa.py`: IPA validation, eSpeak repair, and IPA reports
-- `scripts/ipa_tokens.py`: language inventories, IPA tokenization, and vowel classification
+- `scripts/ipa_tokens.py`: language inventories, normalized cleanup analysis, and vowel classification
+- `scripts/ipa_reversal.py`, `ipa_audit.py`: exact-spelling token reversal and source audits
 - `scripts/generate_rhyme_db.py`: versioned SQLite index creation
 - `tests/`: synthetic pipeline tests and frozen IPA regression fixtures
 
@@ -104,9 +105,10 @@ CREATE INDEX idx_assonance_reversed ON dictionary(assonance_reversed);
 ```
 
 Tokenize with the audited language inventory; never reverse raw characters or
-silently accept/drop unknown symbols. Store reversed complete tokens without
-separators or whitespace in `ipa_reversed`; keep reversed vowel tokens
-space-delimited in `assonance_reversed`. Create indexes after bulk insertion.
+silently accept/drop unknown symbols. Store reversed complete tokens separated
+by one ASCII space in `ipa_reversed`. Follow the format-2 escaping and delimiter
+rules in `IPA_REVERSAL.md` and verify restoration before insertion. Keep reversed
+vowel tokens space-delimited in `assonance_reversed`. Create indexes after bulk insertion.
 
 Do not add a rhyme key, consonance key, fixed tail, syllable data, or
 syllabification. Compound identity-rhyme filtering remains an on-device concern.

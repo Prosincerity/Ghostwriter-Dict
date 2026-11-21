@@ -86,12 +86,12 @@ def archive_sources(paths: list[Path], *, hash_content: bool = False) -> list[di
     return sources
 
 
-def write_json(path: Path, value: object) -> None:
+def write_json(path: Path, value: object, *, ensure_ascii: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     part = path.with_name(f"{path.name}.part")
     try:
         with part.open("w", encoding="utf-8", newline="\n") as output:
-            json.dump(value, output, ensure_ascii=False, indent=2, sort_keys=True)
+            json.dump(value, output, ensure_ascii=ensure_ascii, indent=2, sort_keys=True)
             output.write("\n")
         os.replace(part, path)
     except BaseException:

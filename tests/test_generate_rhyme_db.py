@@ -1,6 +1,5 @@
 import csv
 import json
-import os
 import sqlite3
 import subprocess
 import sys
@@ -18,69 +17,70 @@ FIXTURES = PROJECT_DIR / "tests" / "fixtures"
 sys.path.insert(0, str(GENERATOR.parent))
 import generate_rhyme_db as RHYME_DB
 import ipa_tokens
+from ipa_reversal import restore_original, reverse_ipa_for_db
 
 
 class PhonemeTokenizationTest(unittest.TestCase):
     def test_english_affricate_long_vowel_and_diacritic(self):
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("[ˈtʃɝːtʃ]", "en"),
+            ipa_tokens.analysis_tokens("[ˈtʃɝːtʃ]", "en"),
             ["ˈ", "tʃ", "ɝː", "tʃ"],
         )
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("/ˈkʰæt̚/", "en"),
+            ipa_tokens.analysis_tokens("/ˈkʰæt̚/", "en"),
             ["ˈ", "kʰ", "æ", "t̚"],
         )
 
     def test_german_tied_affricate_and_nonsyllabic_diacritic(self):
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("/ˈkat͡sə/", "de"),
+            ipa_tokens.analysis_tokens("/ˈkat͡sə/", "de"),
             ["ˈ", "k", "a", "t͡s", "ə"],
         )
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("/tyːɐ̯/", "de"),
+            ipa_tokens.analysis_tokens("/tyːɐ̯/", "de"),
             ["t", "yː", "ɐ̯"],
         )
 
     def test_prefix_modifier_before_canonically_composed_vowel(self):
         for ipa in ("ˈʰa\u0301", "ˈʰá"):
             unknown = Counter()
-            self.assertEqual(ipa_tokens.tokenize_ipa(ipa, "en", unknown), ["ˈ", "ʰá"])
+            self.assertEqual(ipa_tokens.analysis_tokens(ipa, "en", unknown), ["ˈ", "ʰá"])
             self.assertFalse(unknown)
             self.assertTrue(ipa_tokens.token_is_vowel("ʰá", "en"))
 
     def test_ignored_text_presentation_selector_after_phoneme(self):
-        self.assertEqual(ipa_tokens.tokenize_ipa("ˈa\ufe0et", "en"), ["ˈ", "a", "t"])
+        self.assertEqual(ipa_tokens.analysis_tokens("ˈa\ufe0et", "en"), ["ˈ", "a", "t"])
 
     def test_dash_is_not_silently_discarded(self):
         unknown = Counter()
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("/-ˌmeːsɪç/", "de", unknown),
+            ipa_tokens.analysis_tokens("/-ˌmeːsɪç/", "de", unknown),
             ["-", "ˌ", "m", "eː", "s", "ɪ", "ç"],
         )
         self.assertEqual(unknown, Counter({"-": 1}))
 
     def test_turkish_affricate_and_long_vowel(self):
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("/t͡ʃoˈd͡ʒuːk/", "tr"),
+            ipa_tokens.analysis_tokens("/t͡ʃoˈd͡ʒuːk/", "tr"),
             ["t͡ʃ", "o", "ˈ", "d͡ʒ", "uː", "k"],
         )
-        self.assertEqual(ipa_tokens.tokenize_ipa("/áː/", "tr"), ["áː"])
+        self.assertEqual(ipa_tokens.analysis_tokens("/áː/", "tr"), ["áː"])
 
     def test_prefix_and_detached_modifiers_and_boundaries(self):
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("/ʃe.ɾi.ˈˤat/", "tr"),
+            ipa_tokens.analysis_tokens("/ʃe.ɾi.ˈˤat/", "tr"),
             ["ʃ", "e", "ɾ", "i", "ˈ", "ˤa", "t"],
         )
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("[ˈkɪtn ̩]", "en"),
+            ipa_tokens.analysis_tokens("[ˈkɪtn ̩]", "en"),
             ["ˈ", "k", "ɪ", "t", "n̩"],
         )
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("[kɪnt⁀ʊnt ‖ ↗a]", "de"),
+            ipa_tokens.analysis_tokens("[kɪnt⁀ʊnt ‖ ↗a]", "de"),
             ["k", "ɪ", "n", "t", "ʊ", "n", "t", "↗", "a"],
         )
         self.assertEqual(
-            ipa_tokens.tokenize_ipa("⫽tai̯²⁴⁻²¹ p⁽ʲ⁾il↗︎⫽", "en"),
+            ipa_tokens.analysis_tokens("⫽tai̯²⁴⁻²¹ p⁽ʲ⁾il↗︎⫽", "en"),
             ["t", "a", "i̯", "²", "⁴", "⁻", "²", "¹", "pʲ", "i", "l", "↗"],
         )
 
@@ -88,21 +88,20 @@ class PhonemeTokenizationTest(unittest.TestCase):
         for lang_code in ipa_tokens.LANGUAGES:
             with self.subTest(lang_code=lang_code):
                 unknown = Counter()
-                tokens = ipa_tokens.tokenize_ipa("/ˈa☃̃/", lang_code, unknown)
+                tokens = ipa_tokens.analysis_tokens("/ˈa☃̃/", lang_code, unknown)
                 self.assertEqual(tokens, ["ˈ", "a", "☃̃"])
                 self.assertEqual(unknown, Counter({"☃̃": 1}))
 
 
 class DerivedValueTest(unittest.TestCase):
     def values(self, ipa, lang_code):
-        tokens = ipa_tokens.tokenize_ipa(ipa, lang_code)
-        return RHYME_DB.derived_values(tokens, lang_code)
+        return reverse_ipa_for_db(ipa, lang_code), RHYME_DB.assonance_key(ipa, lang_code, "wiktionary")
 
     def test_complete_ipa_tokens_and_vowels_are_reversed(self):
         examples = {
-            "en": ("/ˈkæt/", ("tækˈ", "æ")),
-            "de": ("/ˈhaʊs/", ("saʊhˈ", "aʊ")),
-            "tr": ("/biˈlec/", ("celˈib", "e i")),
+            "en": ("/ˈkæt/", ("/ t æ ˈk /", "æ")),
+            "de": ("/ˈhaʊs/", ("/ s aʊ ˈh /", "aʊ")),
+            "tr": ("/biˈlec/", ("/ c e ˈl i b /", "e i")),
         }
         for lang_code, (ipa, expected) in examples.items():
             with self.subTest(lang_code=lang_code):
@@ -110,8 +109,7 @@ class DerivedValueTest(unittest.TestCase):
 
     def test_stress_markers_remain_available_in_reversed_ipa(self):
         ipa_reversed, _ = self.values("/ˈfoʊtoʊˈgræf/", "en")
-        self.assertEqual(ipa_reversed, "færgˈoʊtoʊfˈ")
-        self.assertFalse(any(character.isspace() for character in ipa_reversed))
+        self.assertEqual(ipa_reversed, "/ f æ r ˈg oʊ t oʊ ˈf /")
 
     def test_pure_assonance_matches_without_matching_full_ipa(self):
         examples = {
@@ -151,17 +149,10 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                                 "SELECT ipa_reversed FROM dictionary WHERE word=? AND ipa=?",
                                 (row["word"], row["ipa"]),
                             ).fetchone()
-                            self.assertEqual(key, row["ipa_reversed"])
-                            unknown = Counter()
-                            tokens = ipa_tokens.tokenize_ipa(key, lang, unknown)
-                            self.assertFalse(unknown)
-                            restored, _ = RHYME_DB.derived_values(tokens, lang)
-                            self.assertEqual(restored, row["reversed_again"])
+                            self.assertEqual(key, row["ipa_reversed_v2"])
+                            self.assertEqual(restore_original(key), row["ipa"])
 
     def test_random_release_words_round_trip(self):
-        strict = os.environ.get("GHOSTWRITER_REQUIRE_EXACT_IPA") == "1"
-        failures = Counter()
-        first_failure = {}
         sample = FIXTURES / "ipa_random_release.tsv"
         with tempfile.TemporaryDirectory() as temp, sample.open(encoding="utf-8", newline="") as source:
             rows = list(csv.DictReader(source, delimiter="\t"))
@@ -169,10 +160,10 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
             for lang in ipa_tokens.LANGUAGES:
                 samples = [row for row in rows if row["language"] == lang]
                 words = {}
-                expected = {}
+                expected = set()
                 for row in samples:
                     words.setdefault(row["word"], []).append(row["ipa"])
-                    expected[row["word"], row["ipa"]] = row["ipa_reversed"]
+                    expected.add((row["word"], row["ipa"]))
                 self.assertEqual(len(words), 500)
                 wordlist = Path(temp) / f"{lang}.tsv"
                 wordlist.write_text("".join(f"{word}\t{json.dumps(ipas)}\n" for word, ipas in words.items()),
@@ -182,21 +173,10 @@ class GenerateRhymeDatabaseTest(unittest.TestCase):
                 with closing(sqlite3.connect(database)) as connection:
                     stored = {(word, ipa): key for word, ipa, key in connection.execute(
                         "SELECT word, ipa, ipa_reversed FROM dictionary")}
-                self.assertEqual(stored, expected)
+                self.assertEqual(set(stored), expected)
                 for (word, ipa), key in stored.items():
                     with self.subTest(lang=lang, word=word, ipa=ipa):
-                        forward = ipa_tokens.tokenize_ipa(ipa, lang)
-                        reversed_tokens = ipa_tokens.tokenize_ipa(key, lang)
-                        restored, _ = RHYME_DB.derived_values(reversed_tokens, lang)
-                        # A separator-free key is invertible at the phoneme level
-                        # whenever re-tokenization preserves its boundaries.
-                        if reversed_tokens == forward[::-1]:
-                            self.assertEqual(restored, "".join(forward))
-                        if restored != ipa:
-                            failures[lang] += 1
-                            first_failure.setdefault(lang, (word, ipa, restored))
-        if strict:
-            self.assertFalse(failures, f"Exact double reversal failures: {dict(failures)}; examples: {first_failure}")
+                        self.assertEqual(restore_original(key).encode(), ipa.encode())
 
     def test_each_language_fixture_builds_expected_schema_and_queries(self):
         suffix_pairs = {

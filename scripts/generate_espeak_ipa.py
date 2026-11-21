@@ -96,10 +96,11 @@ def iter_word_batches(source: Iterable[str], batch_size: int) -> Iterable[list[s
         yield batch
 
 
-def call_espeak(executable: str, lang_code: str, words: list[str]) -> list[str]:
+def call_espeak(executable: str, lang_code: str, words: list[str], *, boundaries: bool = False) -> list[str]:
     input_text = "".join(f"{word}\n" for word in words)
+    options = ["--sep=_", "-D"] if boundaries else []
     result = subprocess.run(
-        [executable, "-q", "--ipa", "-v", lang_code],
+        [executable, "-q", "--ipa", *options, "-v", lang_code],
         input=input_text,
         capture_output=True,
         text=True,
@@ -129,8 +130,8 @@ def call_espeak(executable: str, lang_code: str, words: list[str]) -> list[str]:
     # keeping the normal large-batch path fast for the rest of the wordlist.
     if len(words) > 1:
         midpoint = len(words) // 2
-        return call_espeak(executable, lang_code, words[:midpoint]) + call_espeak(
-            executable, lang_code, words[midpoint:]
+        return call_espeak(executable, lang_code, words[:midpoint], boundaries=boundaries) + call_espeak(
+            executable, lang_code, words[midpoint:], boundaries=boundaries
         )
 
     # One input word may contain multiple clauses. Join its non-empty phoneme

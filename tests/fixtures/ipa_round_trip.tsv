@@ -1,9 +1,9 @@
-language	source	word	ipa	ipa_reversed	reversed_again
-en	espeak	church	tʃˈɜːtʃ	tʃɜːˈtʃ	tʃˈɜːtʃ
-en	wiktionary	hammer	/ˈhæmɚ/	ɚmæhˈ	ˈhæmɚ
-en	wiktionary	hammer	[ˈhæmɚ]	ɚmæhˈ	ˈhæmɚ
-de	wiktionary	katze	ˈkat͡sə	ət͡sakˈ	ˈkat͡sə
-de	espeak	gast	ɡˈast	tsaˈɡ	ɡˈats
-tr	espeak	çocuk	tʃodʒˈʊk	kʊˈdʒotʃ	tʃodʒˈʊk
-tr	wiktionary	çocuk	/t͡ʃoˈd͡ʒuk/	kud͡ʒˈot͡ʃ	t͡ʃoˈd͡ʒuk
-tr	espeak	01	sɯfˈɯr bˈir	riˈbrɯˈfɯs	sɯfˈɯrbˈir
+language	source	word	ipa	ipa_reversed	reversed_again	ipa_reversed_v2
+en	espeak	church	tʃˈɜːtʃ	tʃɜːˈtʃ	tʃˈɜːtʃ	tʃ ˈɜː tʃ
+en	wiktionary	hammer	/ˈhæmɚ/	ɚmæhˈ	ˈhæmɚ	/ ɚ m æ ˈh /
+en	wiktionary	hammer	[ˈhæmɚ]	ɚmæhˈ	ˈhæmɚ	[ ɚ m æ ˈh ]
+de	wiktionary	katze	ˈkat͡sə	ət͡sakˈ	ˈkat͡sə	ə t͡s a ˈk
+de	espeak	gast	ɡˈast	tsaˈɡ	ɡˈats	t s ˈa ɡ
+tr	espeak	çocuk	tʃodʒˈʊk	kʊˈdʒotʃ	tʃodʒˈʊk	k ˈʊ dʒ o tʃ
+tr	wiktionary	çocuk	/t͡ʃoˈd͡ʒuk/	kud͡ʒˈot͡ʃ	t͡ʃoˈd͡ʒuk	/ k u ˈd͡ʒ o t͡ʃ /
+tr	espeak	01	sɯfˈɯr bˈir	riˈbrɯˈfɯs	sɯfˈɯrbˈir	r ˈi b \u{20} r ˈɯ f ɯ s

@@ -2,6 +2,7 @@
 
 import unicodedata
 from collections import Counter
+from functools import lru_cache
 
 
 LANGUAGES = ("en", "de", "tr")
@@ -81,8 +82,15 @@ PHONEME_CANDIDATES = {
     for lang, phonemes in PHONEMES.items()
 }
 
+# Keep longest-first precedence without scanning unrelated initials at every offset.
+BY_INITIAL = {
+    lang: {c: tuple(p for p in phones if p.startswith(c)) for c in {p[0] for p in phones}}
+    for lang, phones in PHONEME_CANDIDATES.items()
+}
+
+
 # Spacing modifier letters and IPA marks that qualify the preceding phoneme.
-# Unicode combining marks are attached by category in ``tokenize_ipa`` too.
+# Unicode combining marks are attached by category in ``analysis_tokens`` too.
 POSTFIX_MODIFIERS = frozenset(
     (
         ":", "ː", "ˑ", "̆", "̯", "̃", "̥", "̬", "̩", "̪", "̺", "̻", "̝", "̞",
@@ -115,16 +123,21 @@ def is_postfix_modifier(character: str) -> bool:
     return character in POSTFIX_MODIFIERS or unicodedata.category(character) in {"Mn", "Me"}
 
 
-def tokenize_ipa(
-    ipa: str, lang_code: str, unknown: Counter[str] | None = None
+def analysis_tokens(
+    ipa: str, lang_code: str, unknown: Counter[str] | None = None, *, espeak: bool = False
 ) -> list[str]:
-    """Return phoneme/stress tokens, preserving and reporting unknown clusters."""
+    """Normalized cleanup/assonance view. Lossless storage uses ipa_reversal."""
+    ipa = ipa.replace("\u200d", "͡").replace("\u200c", ".")
+    if espeak:
+        ipa = ipa.replace("_", ".")
     ipa = unicodedata.normalize("NFC", ipa.strip())
-    candidates = PHONEME_CANDIDATES[lang_code]
+    candidates = BY_INITIAL[lang_code]
 
     def match_base(offset: int) -> str | None:
-        match = next((value for value in candidates if ipa.startswith(value, offset)), None)
-        if match is not None or offset == len(ipa):
+        if offset == len(ipa):
+            return None
+        match = next((value for value in candidates.get(ipa[offset], ()) if ipa.startswith(value, offset)), None)
+        if match is not None:
             return match
         # NFC may compose an inventory base and diacritic into one code point.
         character = ipa[offset]
@@ -181,6 +194,7 @@ def tokenize_ipa(
     return tokens
 
 
+@lru_cache(maxsize=8192)
 def token_is_vowel(token: str, lang_code: str) -> bool:
     without_prefix = token
     while without_prefix and without_prefix[0] in PREFIX_MODIFIERS:
