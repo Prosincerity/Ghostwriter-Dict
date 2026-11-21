@@ -14,6 +14,7 @@ changes.
 - `scripts/generate_espeak_ipa.py`: missing-IPA generation
 - `scripts/clean_rhyme_words.py`: written-word cleanup and word audit reports
 - `scripts/clean_rhyme_ipa.py`: IPA validation, eSpeak repair, and IPA reports
+- `scripts/ipa_tokens.py`: language inventories, IPA tokenization, and vowel classification
 - `scripts/generate_rhyme_db.py`: versioned SQLite index creation
 - `tests/`: synthetic pipeline tests and frozen IPA regression fixtures
 

@@ -12,7 +12,7 @@ from build_reports import publish_files
 from clean_rhyme_ipa import clean_pronunciation
 from clean_rhyme_words import POLICY_VERSION, ProgressBar, clean_headword
 from extract_ipa import is_usable_ipa
-from generate_rhyme_db import STRESS_MARKERS
+from ipa_tokens import STRESS_MARKERS
 from raw_entries import raw_paths
 
 

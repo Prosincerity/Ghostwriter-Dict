@@ -14,8 +14,8 @@ from typing import Optional, TextIO
 from build_reports import publish_files
 from clean_rhyme_words import POLICY_VERSION, parse_word_row, write_json_line
 from generate_espeak_ipa import call_espeak, resolve_espeak
-from generate_rhyme_db import (
-    LANGUAGES, PROSODY_MARKERS, STRESS_MARKERS,
+from ipa_tokens import (
+    LANGUAGES, NON_PHONEME_MARKERS, PROSODY_MARKERS, STRESS_MARKERS,
     token_is_vowel, tokenize_ipa,
 )
 
@@ -167,7 +167,7 @@ def clean_pronunciation(
                 reason = "unrecognized_tokens"
                 details["tokens"] = dict(sorted(unknown.items()))
             elif not any(
-                token not in STRESS_MARKERS | PROSODY_MARKERS for token in tokens
+                token not in NON_PHONEME_MARKERS for token in tokens
             ):
                 reason = "empty_pronunciation"
             else:
@@ -199,7 +199,7 @@ def phoneme_tokens(ipa: str, lang_code: str) -> list[str]:
     tokens = tokenize_ipa(ipa, lang_code, unknown)
     if unknown:
         raise ValueError(f"unrecognized IPA tokens: {dict(sorted(unknown.items()))}")
-    return [token for token in tokens if token not in STRESS_MARKERS | PROSODY_MARKERS]
+    return [token for token in tokens if token not in NON_PHONEME_MARKERS]
 
 
 def phoneme_edit_distance(left: list[str], right: list[str]) -> int:

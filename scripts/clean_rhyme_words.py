@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, TextIO
 
 from build_reports import publish_files
-from generate_rhyme_db import LANGUAGES
+from ipa_tokens import LANGUAGES
 
 
 POLICY_VERSION = "rhyme-cleanup-v19"

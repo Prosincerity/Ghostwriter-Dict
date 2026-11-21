@@ -88,6 +88,13 @@ done
                 with closing(sqlite3.connect(db)) as connection:
                     self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
             self.assertNotIn("Building ", run())
+            with (scripts / "ipa_tokens.py").open("a") as tokenizer:
+                tokenizer.write("\n# fixture inventory revision\n")
+            changed = run()
+            for lang in ("en", "de", "tr"):
+                for stage in ("clean", "validate", "database", "database_espeak"):
+                    self.assertIn(f"Building {lang}/{stage}\n", changed)
+                self.assertNotIn(f"Building {lang}/generate", changed)
             path = out / "tr/wordlist_tr_espeak_ipa.txt"
             path.write_text("damaged")
             repaired = run()

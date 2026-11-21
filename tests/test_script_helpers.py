@@ -16,6 +16,7 @@ from unittest import mock
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+import ipa_tokens
 
 
 def load_script(name: str, path: Path):
@@ -302,13 +303,11 @@ class EspeakHelperTest(unittest.TestCase):
 
 class RhymeDatabaseHelperTest(unittest.TestCase):
     def test_inventory_modifiers_and_vowel_classification(self):
-        vowels, candidates = RHYME.inventory("en")
-        self.assertIn("aɪ", vowels)
-        self.assertGreaterEqual(len(candidates[0]), len(candidates[-1]))
-        self.assertTrue(RHYME.is_postfix_modifier("̃"))
-        self.assertFalse(RHYME.is_postfix_modifier("k"))
-        self.assertTrue(RHYME.token_is_vowel("ʷáː", "en"))
-        self.assertFalse(RHYME.token_is_vowel("kʰ", "en"))
+        self.assertIn("aɪ", ipa_tokens.VOWELS["en"])
+        self.assertTrue(ipa_tokens.is_postfix_modifier("̃"))
+        self.assertFalse(ipa_tokens.is_postfix_modifier("k"))
+        self.assertTrue(ipa_tokens.token_is_vowel("ʷáː", "en"))
+        self.assertFalse(ipa_tokens.token_is_vowel("kʰ", "en"))
 
     def test_parse_wordlist_line_normalizes_and_rejects_invalid_shapes(self):
         path = Path("fixture.txt")

@@ -100,7 +100,7 @@ def build(args):
     cache = Stages()
     dirs = {lang: OUT / lang for lang in LANGUAGES}
     cleaning_code = ["prepare_entries", "clean_rhyme_words", "clean_rhyme_ipa",
-                     "generate_rhyme_db", "extract_ipa", "raw_entries"]
+                     "ipa_tokens", "extract_ipa", "raw_entries"]
     if args.verified_archive_sha256:
         # The shell hashes the actual files under the build lock. Reuse that
         # in-process evidence to avoid a second full read of every archive.
@@ -138,7 +138,7 @@ def build(args):
                 original = directory / f"wordlist_{lang}_{source}.txt"
                 cleaned = directory / f"wordlist_{lang}_{name}_words_cleaned.txt"
                 cache.run(lambda: words.clean_wordlist(original, cleaned, lang), directory, f"words_{name}",
-                          [original], list(words.output_paths(cleaned).values()), ["clean_rhyme_words"])
+                          [original], list(words.output_paths(cleaned).values()), ["clean_rhyme_words", "ipa_tokens"])
 
     if args.archive:
         for lang, directory in dirs.items():
@@ -178,7 +178,7 @@ def build(args):
                   replace_extreme_mismatches=args.replace_extreme_mismatches, extreme_distance=args.extreme_distance,
                   repair_requests=repairs), directory, "validate", inputs,
                   list(ipa.output_paths(source, generated).values()),
-                  ["clean_rhyme_ipa", "clean_rhyme_words", "generate_rhyme_db", "generate_espeak_ipa"],
+                  ["clean_rhyme_ipa", "clean_rhyme_words", "ipa_tokens", "generate_espeak_ipa"],
                   [version, args.extreme_distance, args.replace_extreme_mismatches])
 
         report_dir = directory / "reports/cleaning"
@@ -204,7 +204,7 @@ def build(args):
             source = directory / f"wordlist_{lang}{suffix}_rhyme_eligible.txt"
             database = directory / f"{lang}{suffix}_{args.release_version}.db"
             cache.run(lambda: build_database(source, database, lang, args.release_version), directory,
-                      f"database{suffix}", [source], [database], ["generate_rhyme_db"], args.release_version)
+                      f"database{suffix}", [source], [database], ["generate_rhyme_db", "ipa_tokens"], args.release_version)
             databases.append(database)
 
     cache.run(lambda: subprocess.run([sys.executable, SCRIPTS / "package_release.py",
