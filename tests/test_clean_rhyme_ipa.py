@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import sqlite3
 import sys
@@ -10,12 +9,8 @@ from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+import clean_rhyme_ipa as IPA
 from generate_rhyme_db import build_database
-
-SPEC = importlib.util.spec_from_file_location("clean_rhyme_ipa", SCRIPTS / "clean_rhyme_ipa.py")
-assert SPEC is not None and SPEC.loader is not None
-IPA = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(IPA)
 
 
 def rows(path):

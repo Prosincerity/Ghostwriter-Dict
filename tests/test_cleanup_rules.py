@@ -1,4 +1,3 @@
-import importlib.util
 import sys
 import string
 import unittest
@@ -7,18 +6,8 @@ from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
-
-
-def load(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-WORDS = load("clean_rhyme_words_rules", SCRIPTS_DIR / "clean_rhyme_words.py")
-IPA = load("clean_rhyme_ipa_rules", SCRIPTS_DIR / "clean_rhyme_ipa.py")
+import clean_rhyme_ipa as IPA
+import clean_rhyme_words as WORDS
 
 
 class PronunciationCleanupTest(unittest.TestCase):

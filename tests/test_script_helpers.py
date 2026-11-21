@@ -1,5 +1,4 @@
 import gzip
-import importlib.util
 import io
 import json
 import os
@@ -16,24 +15,12 @@ from unittest import mock
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+import clean_rhyme_ipa as IPA
+import clean_rhyme_words as WORDS
+import extract_ipa as EXTRACT
+import generate_espeak_ipa as ESPEAK
+import generate_rhyme_db as RHYME
 import ipa_tokens
-
-
-def load_script(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-EXTRACT = load_script("extract_ipa_helpers", SCRIPTS_DIR / "extract_ipa.py")
-ESPEAK = load_script(
-    "generate_espeak_ipa_helpers", SCRIPTS_DIR / "generate_espeak_ipa.py"
-)
-RHYME = load_script("generate_rhyme_db_helpers", SCRIPTS_DIR / "generate_rhyme_db.py")
-WORDS = load_script("clean_rhyme_words_helpers", SCRIPTS_DIR / "clean_rhyme_words.py")
-IPA = load_script("clean_rhyme_ipa_helpers", SCRIPTS_DIR / "clean_rhyme_ipa.py")
 
 
 class TtyBuffer(io.StringIO):

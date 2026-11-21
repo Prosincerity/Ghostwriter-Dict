@@ -1,6 +1,5 @@
 import gzip
 import hashlib
-import importlib.util
 import os
 import shutil
 import subprocess
@@ -13,14 +12,12 @@ from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "package_release.py"
 RELEASE = "kaikki-v20260909"
+sys.path.insert(0, str(SCRIPT.parent))
+import package_release
 
 
 class PackageReleaseTest(unittest.TestCase):
     def test_publish_failure_restores_old_archives_and_manifest(self):
-        spec = importlib.util.spec_from_file_location("package_release_test", SCRIPT)
-        assert spec is not None and spec.loader is not None
-        package = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(package)
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             old_archives = {}
@@ -50,11 +47,11 @@ class PackageReleaseTest(unittest.TestCase):
                     raise OSError("publish failed")
                 return real_replace(source, destination)
 
-            with mock.patch.object(package, "PROJECT_DIR", root), \
+            with mock.patch.object(package_release, "PROJECT_DIR", root), \
                  mock.patch.object(sys, "argv", [str(SCRIPT), "--release-version", RELEASE]), \
                  mock.patch.object(os, "replace", side_effect=fail_publish):
                 with self.assertRaisesRegex(OSError, "publish failed"):
-                    package.main()
+                    package_release.main()
 
             self.assertTrue(failed)
             self.assertFalse(new_archive.exists())

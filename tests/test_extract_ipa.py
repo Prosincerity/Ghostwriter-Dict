@@ -1,5 +1,4 @@
 import gzip
-import importlib.util
 import json
 import os
 import shutil
@@ -13,6 +12,8 @@ from unittest.mock import patch
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 EXTRACTOR = PROJECT_DIR / "scripts" / "extract_ipa.py"
+sys.path.insert(0, str(EXTRACTOR.parent))
+import extract_ipa
 
 
 def write_gzip_jsonl(path, records):
@@ -84,16 +85,8 @@ class ExtractIpaTest(unittest.TestCase):
                 self.assertEqual((root / "en/wordlist_en_noipa.txt").read_text(), expected + "\n")
 
     def test_default_output_is_script_relative(self):
-        spec = importlib.util.spec_from_file_location("extract_ipa", EXTRACTOR)
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        try:
-            spec.loader.exec_module(module)
-            with patch.object(sys, "argv", [str(EXTRACTOR), "input.jsonl", "--lang-code", "en"]):
-                self.assertEqual(module.parse_args().outdir, PROJECT_DIR / "out")
-        finally:
-            del sys.modules[spec.name]
+        with patch.object(sys, "argv", [str(EXTRACTOR), "input.jsonl", "--lang-code", "en"]):
+            self.assertEqual(extract_ipa.parse_args().outdir, PROJECT_DIR / "out")
 
     def test_malformed_lang_code_does_not_stop_later_records(self):
         with tempfile.TemporaryDirectory() as temp_dir:
