@@ -11,7 +11,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, TextIO
 
-from build_reports import publish_files
+from build_reports import publish_files, validate_output_paths
 from ipa_tokens import LANGUAGES
 from progress import ProgressBar
 
@@ -152,10 +152,11 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
     if not input_path.is_file():
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
     paths = output_paths(output_path)
-    for path in paths.values():
-        path.parent.mkdir(parents=True, exist_ok=True)
     parts = {name: path.with_name(f"{path.name}.part") for name, path in paths.items()}
     staging_path = output_path.with_name(f"{output_path.name}.rows.part")
+    validate_output_paths([input_path], [*paths.values(), *parts.values(), staging_path])
+    for path in paths.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
     for path in (*parts.values(), staging_path):
         path.unlink(missing_ok=True)
 

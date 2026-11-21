@@ -11,7 +11,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
-from build_reports import publish_files
+from build_reports import publish_files, validate_output_paths
 from clean_rhyme_words import POLICY_VERSION, parse_word_row, write_json_line
 from generate_espeak_ipa import call_espeak, resolve_espeak
 from ipa_tokens import (
@@ -367,10 +367,14 @@ def clean_ipa_wordlists(
         if not path.is_file():
             raise FileNotFoundError(f"missing input wordlist: {path}")
     paths = output_paths(wiki_output, espeak_output)
-    for path in paths.values():
-        path.parent.mkdir(parents=True, exist_ok=True)
     parts = {name: path.with_name(f"{path.name}.part") for name, path in paths.items()}
     staging_path = wiki_output.with_name(f"{wiki_output.name}.rows.part")
+    inputs = [wiki_input, espeak_input]
+    if repair_requests is not None:
+        inputs.append(repair_requests)
+    validate_output_paths(inputs, [*paths.values(), *parts.values(), staging_path])
+    for path in paths.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
     for path in (*parts.values(), staging_path):
         path.unlink(missing_ok=True)
 

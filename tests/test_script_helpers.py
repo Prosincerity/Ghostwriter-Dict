@@ -127,6 +127,44 @@ class ExtractionHelperTest(unittest.TestCase):
 
 
 class CleanupHelperTest(unittest.TestCase):
+    def test_word_cleanup_rejects_input_as_output_or_staging_file(self):
+        for suffix in ("", ".part", ".rows.part"):
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as temp:
+                output = Path(temp) / "words.tsv"
+                source = Path(f"{output}{suffix}")
+                original = 'a.b\t["a"]\nhello\t["a"]\n'
+                source.write_text(original)
+                with self.assertRaisesRegex(ValueError, "path"):
+                    WORDS.clean_wordlist(source, output, "en")
+                self.assertEqual(source.read_text(), original)
+
+    def test_ipa_cleanup_protects_both_sources_repairs_and_generated_paths(self):
+        for collision in ("source", "repairs", "outputs", "staging"):
+            with self.subTest(collision=collision), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                source, machine, output = (root / name for name in ("source", "machine", "clean"))
+                source.write_text('hello\t["/ˈa/"]\n')
+                machine.write_text("")
+                repairs = root / "repairs"
+                repairs.write_text("")
+                other = root / "generated"
+                if collision == "source":
+                    other.symlink_to(source)
+                elif collision == "repairs":
+                    other = repairs
+                elif collision == "outputs":
+                    other = output
+                else:
+                    machine = Path(f"{output}.rows.part")
+                    machine.write_text("")
+                with mock.patch.object(IPA, "call_espeak", return_value=["ˈa"]), self.assertRaisesRegex(ValueError, "path"):
+                    IPA.clean_ipa_wordlists(source, machine, output, other, "en", "unused",
+                                            repair_requests=repairs)
+                self.assertEqual(source.read_text(), 'hello\t["/ˈa/"]\n')
+                self.assertEqual(machine.read_text(), "")
+                self.assertEqual(repairs.read_text(), "")
+                self.assertFalse(output.exists())
+
     def test_output_paths_stay_under_reports(self):
         output = Path("build/en/wordlist_en_rhyme_eligible.txt")
         paths = WORDS.output_paths(output)

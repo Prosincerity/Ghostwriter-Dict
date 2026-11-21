@@ -10,6 +10,16 @@ import tempfile
 from pathlib import Path
 
 
+def validate_output_paths(inputs, outputs):
+    """A staged or final write must never target an input or another output."""
+    reserved = {path.resolve() for path in inputs}
+    for path in outputs:
+        target = path.resolve()
+        if target in reserved:
+            raise ValueError(f"overlapping input, output or staging path: {path}")
+        reserved.add(target)
+
+
 def staged_file(destination: Path) -> Path:
     descriptor, name = tempfile.mkstemp(
         prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
