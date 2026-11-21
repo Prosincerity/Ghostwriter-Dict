@@ -91,6 +91,13 @@ mkdir -p "$RAW_DIR" "$OUT_DIR"
 exec 9<"$OUT_DIR"
 flock --exclusive 9
 
+archive_has_payload() {
+    # Read one decompressed byte even when checking an existing SHA-256 receipt.
+    python3 -c 'import gzip, sys
+with gzip.open(sys.argv[1], "rb") as archive:
+    sys.exit(0 if archive.read(1) else 1)' "$1"
+}
+
 download() {
     local url="$1"
     local destination="$2"
@@ -148,7 +155,7 @@ download() {
             IFS= read -r saved_digest < "$receipt" || true
             digest="$(sha256sum < "$destination")"
             digest="${digest%% *}"
-            if [[ "$saved_digest" == "$digest $remote_etag" ]]; then
+            if [[ "$saved_digest" == "$digest $remote_etag" ]] && archive_has_payload "$destination"; then
                 echo "Up to date: $(basename -- "$destination") ($remote_etag)"
                 ARCHIVE_HASH_OPTIONS+=(--verified-archive-sha256 "$digest")
                 printf -v "$status_variable" '%s' 'reused'
@@ -174,7 +181,7 @@ download() {
         return 1
     fi
 
-    if [[ ! -s "$destination.part" ]] || ! gzip -t -- "$destination.part"; then
+    if [[ ! -s "$destination.part" ]] || ! gzip -t -- "$destination.part" || ! archive_has_payload "$destination.part"; then
         rm -f -- "$destination.part" "$etag_file.part"
         echo "Downloaded archive is empty or invalid gzip: $destination.part" >&2
         return 1

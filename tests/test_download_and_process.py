@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import os
 import shutil
 import subprocess
@@ -54,7 +55,9 @@ if [[ "$head_request" == true ]]; then
     printf 'HTTP/1.1 200 OK\r\nETag: "fixture"\r\nLast-Modified: %s\r\n\r\n' "$modified"
 else
     printf 'fixture archive\n' | gzip -n > "$output"
-    if [[ "${DOWNLOAD_FAULT:-}" == "truncated" ]]; then
+    if [[ "${DOWNLOAD_FAULT:-}" == "empty" ]]; then
+        gzip -n < /dev/null > "$output"
+    elif [[ "${DOWNLOAD_FAULT:-}" == "truncated" ]]; then
         truncate -s -4 "$output"
     fi
     if [[ "${DOWNLOAD_FAULT:-}" == "changed" ]]; then
@@ -67,6 +70,10 @@ fi
 
 FAKE_PYTHON = r"""#!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == "-c" ]]; then
+    command -p python3 "$@"
+    exit
+fi
 printf '%s\n' "$*" >> "$PIPELINE_CALL_LOG"
 """
 
@@ -123,7 +130,7 @@ class DownloadAndProcessTest(unittest.TestCase):
             self.assertIn("--status tr=reused", audit_calls[0])
 
     def test_invalid_download_preserves_previous_archive(self):
-        for fault in ("truncated", "changed", "redirect"):
+        for fault in ("truncated", "changed", "redirect", "empty"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 scripts = root / "scripts"
@@ -148,6 +155,28 @@ class DownloadAndProcessTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertEqual(previous.read_bytes(), payload)
                 self.assertEqual(list(raw.glob("*.part")), [])
+
+    def test_download_refreshes_cached_empty_gzip_with_matching_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            shutil.copy2(PIPELINE, scripts)
+            for name, contents in (("curl", FAKE_CURL), ("python3", FAKE_PYTHON)):
+                fake = root / name
+                fake.write_text(contents)
+                fake.chmod(0o755)
+            archive = root / "raw" / "de-extract.jsonl.gz"
+            archive.parent.mkdir()
+            payload = gzip.compress(b"", mtime=0)
+            archive.write_bytes(payload)
+            Path(f"{archive}.etag").write_text('"fixture"\n')
+            Path(f"{archive}.sha256").write_text(f'{hashlib.sha256(payload).hexdigest()} "fixture"\n')
+            log = root / "calls"
+            env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", PIPELINE_CALL_LOG=str(log))
+            subprocess.run([scripts / PIPELINE.name], env=env, check=True, capture_output=True)
+            self.assertEqual(gzip.decompress(archive.read_bytes()), b"fixture archive\n")
+            self.assertIn("--status de=downloaded", log.read_text())
 
     def test_skip_download_requires_an_explicit_release(self):
         result = subprocess.run(
