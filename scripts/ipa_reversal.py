@@ -62,6 +62,13 @@ def opaque_component(char: str) -> bool:
     return char.isalpha() and char not in NON_SEGMENT_LETTERS and not is_modifier(char)
 
 
+def followed_by_tie(ipa, pos):
+    if pos < len(ipa) and ipa[pos] in " (⁽":
+        # Look ahead without reporting marks before their host is consumed.
+        pos = include_written_modifiers(ipa, pos, [])
+    return pos < len(ipa) and ipa[pos] in TIES
+
+
 def segment_end(ipa, first, base, lang, source, explicit, issues):
     size = len(ipa)
     i = after_marks(ipa, first + 1)
@@ -73,8 +80,7 @@ def segment_end(ipa, first, base, lang, source, explicit, issues):
             right = after_marks(ipa, i + 1)
             if right >= size or not (base_letter(ipa[right], lang) or opaque_component(ipa[right])):
                 issues.append(("dangling_tie", ipa[first:right]))
-                i = right
-                break
+                return include_written_modifiers(ipa, right, issues)
             i = after_marks(ipa, right + 1)
             if not base_letter(ipa[right], lang):
                 issues.append(("unknown", ipa[right:i]))
@@ -82,7 +88,11 @@ def segment_end(ipa, first, base, lang, source, explicit, issues):
             continue
         right_base = base_letter(ipa[i], lang)
         if not right_base and not (explicit and opaque_component(ipa[i])):
-            break
+            end = include_written_modifiers(ipa, i, issues)
+            if end > i and (explicit or (end < size and ipa[end] in TIES)):
+                i = end
+                continue
+            return end
         end = after_marks(ipa, i + 1)
         pair = base + right_base
         if explicit:
@@ -90,7 +100,7 @@ def segment_end(ipa, first, base, lang, source, explicit, issues):
                 issues.append(("unknown", ipa[i:end]))
             i = end
             continue
-        if source == "espeak-tied" or joined or (end < size and ipa[end] in TIES):
+        if source == "espeak-tied" or joined or followed_by_tie(ipa, end):
             break
         left_marks = ipa[first + 1:i]
         glide = (base in VOWELS[lang] and right_base in VOWELS[lang]
@@ -176,7 +186,7 @@ def analyze(ipa: str, lang: str, source: str = "wiktionary") -> Analysis:
         base = base_letter(ipa[i], lang) if i < size else ""
         if not base and i < size and opaque_component(ipa[i]):
             end = after_marks(ipa, i + 1)
-            if explicit or (end < size and ipa[end] in TIES):
+            if explicit or followed_by_tie(ipa, end):
                 issues.append(("unknown", ipa[i:end]))
                 base = ipa[i]
         if not base:
@@ -190,7 +200,6 @@ def analyze(ipa: str, lang: str, source: str = "wiktionary") -> Analysis:
             continue
 
         i = segment_end(ipa, i, base, lang, source, explicit, issues)
-        i = include_written_modifiers(ipa, i, issues)
         token = ipa[start:i]
         tokens.append(token)
         segments.append(token)

@@ -10,6 +10,16 @@ from ipa_tokens import PHONEMES
 
 
 class LosslessTest(unittest.TestCase):
+    def test_written_modifiers_do_not_interrupt_explicit_ties(self):
+        for sound in ("p⁽ʲ⁾͡f", "t(ʰ)͜s", "t ̪͡s", "k͡p⁽ʲ⁾\u200dw"):
+            with self.subTest(sound=sound):
+                self.check("ˈ" + sound + "a", "de", "wiktionary", ["ˈ" + sound, "a"])
+                self.assertNotIn("detached_modifier", dict(analyze(sound, "de").issues))
+        self.check("p⁽ʲ⁾.f", "de", "wiktionary", ["p⁽ʲ⁾", ".", "f"])
+        self.check("tʃ⁽ʲ⁾͡k", "en", "wiktionary", ["t", "ʃ⁽ʲ⁾͡k"])
+        self.check("ɮ(ʲ)͡d", "en", "wiktionary", ["ɮ(ʲ)͡d"])
+        self.assertIn(("unknown", "ɮ"), analyze("ɮ(ʲ)͡d", "en").issues)
+
     def check(self, ipa, lang, source, expected):
         tokens = tokenize_ipa(ipa, lang, source)
         self.assertEqual(tokens, tuple(expected))
