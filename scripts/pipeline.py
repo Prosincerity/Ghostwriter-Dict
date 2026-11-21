@@ -19,7 +19,7 @@ if __name__ == "__main__":
 import clean_rhyme_ipa as ipa
 import clean_rhyme_words as words
 import generate_espeak_ipa as g2p
-from build_reports import sha256_file, write_json
+from build_reports import sha256_file, staged_outputs, write_json
 from generate_rhyme_db import build_database
 from ipa_audit import audit_file
 from prepare_entries import prepare, prepared_paths
@@ -151,15 +151,10 @@ def build(args):
 
             def generate():
                 count = g2p.validate_input(missing)
-                report.parent.mkdir(parents=True, exist_ok=True)
-                part = empty_words.with_suffix(".txt.part")
-                try:
-                    with part.open("w", encoding="utf-8") as audit:
-                        made, empty = g2p.generate_language(executable, missing, generated, lang, 10000, count, audit)
-                    part.replace(empty_words)
-                finally:
-                    part.unlink(missing_ok=True)
-                write_json(report, dict(input_words=count, generated_words=made, empty_ipa_words=empty))
+                with staged_outputs(generated, empty_words, report) as (wordlist, empties, summary):
+                    with empties.open("w", encoding="utf-8") as audit:
+                        made, empty = g2p.generate_language(executable, missing, wordlist, lang, 10000, count, audit)
+                    write_json(summary, dict(input_words=count, generated_words=made, empty_ipa_words=empty))
 
             cache.run(generate, directory, "generate", [missing, *engine], [generated, report, empty_words],
                       ["generate_espeak_ipa", "progress"], version)

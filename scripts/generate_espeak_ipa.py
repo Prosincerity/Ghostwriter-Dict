@@ -17,7 +17,7 @@ import unicodedata
 from pathlib import Path
 from typing import Iterable, TextIO
 
-from build_reports import archive_sources, sha256_file, write_json
+from build_reports import archive_sources, sha256_file, staged_outputs, write_json
 from progress import ProgressBar
 
 
@@ -215,6 +215,7 @@ def process_language(
         raise FileNotFoundError(f"missing input wordlist: {input_path}")
 
     report_path = language_outdir / "reports" / "ipa_generation" / f"wordlist_{lang_code}_espeak_ipa_source.json"
+    stage_report = report_path.with_name("report.json")
     input_hash = sha256_file(input_path)
     source_archives = sources if sources is not None else []
     expected_source = {
@@ -240,32 +241,24 @@ def process_language(
             and report.get("output_sha256") == sha256_file(output_path)
         ):
             print(f"Reusing {lang_code} eSpeak IPA: {output_path}")
-            write_json(language_outdir / "reports" / "ipa_generation" / "report.json", {
+            write_json(stage_report, {
                 **report, "status": "reused",
             })
             return
 
     word_count = validate_input(input_path)
     print(f"Generating {lang_code} IPA for {word_count:,} words...")
-    generated, empty = generate_language(
-        executable,
-        input_path,
-        output_path,
-        lang_code,
-        batch_size,
-        word_count,
-    )
-    report = {
-        **expected_source,
-        "output_wordlist": str(output_path.resolve()),
-        "output_sha256": sha256_file(output_path),
-        "generated_words": generated,
-        "empty_ipa_words": empty,
-    }
-    write_json(report_path, report)
-    write_json(language_outdir / "reports" / "ipa_generation" / "report.json", {
-        **report, "status": "generated",
-    })
+    with staged_outputs(output_path, report_path, stage_report) as (wordlist, provenance, summary):
+        generated, empty = generate_language(executable, input_path, wordlist, lang_code, batch_size, word_count)
+        report = {
+            **expected_source,
+            "output_wordlist": str(language_outdir.resolve() / output_path.name),
+            "output_sha256": sha256_file(wordlist),
+            "generated_words": generated,
+            "empty_ipa_words": empty,
+        }
+        write_json(provenance, report)
+        write_json(summary, {**report, "status": "generated"})
     print(f"  Generated : {generated:,}")
     print(f"  Empty IPA : {empty:,}")
     print(f"  Output    : {output_path}")

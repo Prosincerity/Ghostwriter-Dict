@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import tempfile
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 
@@ -70,6 +71,19 @@ def publish_files(files: list[tuple[Path, Path]]) -> None:
         for backup in backups.values():
             if backup is not None:
                 backup.unlink(missing_ok=True)
+
+
+@contextmanager
+def staged_outputs(*destinations: Path):
+    """Publish the completed group together, staging on each target's filesystem."""
+    with ExitStack() as cleanup:
+        parts = []
+        for destination in destinations:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            directory = cleanup.enter_context(tempfile.TemporaryDirectory(dir=destination.parent))
+            parts.append(Path(directory) / f"{destination.name}.part")
+        yield parts
+        publish_files(list(zip(parts, destinations)))
 
 
 def sha256_file(path: Path) -> str:

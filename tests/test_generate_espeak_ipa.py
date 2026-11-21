@@ -1,14 +1,20 @@
+import gzip
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
+from unittest import mock
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 GENERATOR = PROJECT_DIR / "scripts" / "generate_espeak_ipa.py"
+sys.path.insert(0, str(GENERATOR.parent))
+import generate_espeak_ipa
+import pipeline
 
 
 FAKE_ESPEAK = """#!/usr/bin/env python3
@@ -31,6 +37,50 @@ print()
 
 
 class GenerateEspeakIpaTest(unittest.TestCase):
+    def test_report_publish_failure_preserves_the_generation_stage(self):
+        for full_build in (False, True):
+            with self.subTest(full_build=full_build), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                directory = root / "en"
+                reports = directory / "reports" / "ipa_generation"
+                reports.mkdir(parents=True)
+                report = reports / "report.json"
+                output = directory / "wordlist_en_espeak_ipa.txt"
+                companion = reports / ("empty_words.txt" if full_build else "wordlist_en_espeak_ipa_source.json")
+                previous = {output: b'old\t["old"]\n', companion: b"old metadata\n", report: b"{}\n"}
+                for path, contents in previous.items():
+                    path.write_bytes(contents)
+                (directory / "wordlist_en_noipa.txt").write_text("newword\n")
+                engine = root / "espeak-ng"
+                engine.write_text('#!/bin/sh\nif [ "$1" = --version ]; then echo fixture; exit; fi\n'
+                                  'while read -r word; do echo ma; done\n')
+                engine.chmod(0o755)
+                archive = root / "edition.jsonl.gz"
+                archive.write_bytes(gzip.compress(b'{"lang_code":"en","word":"newword"}\n'))
+                replace = os.replace
+
+                def fail_final_report(src, dst):
+                    if Path(dst) == report:
+                        raise OSError("injected report failure")
+                    return replace(src, dst)
+
+                with mock.patch("os.replace", side_effect=fail_final_report):
+                    if full_build:
+                        args = Namespace(archive=[archive], verified_archive_sha256=None,
+                                         release_version="test", replace_extreme_mismatches=False, extreme_distance=0.8)
+                        with (
+                            mock.patch.object(pipeline, "OUT", root),
+                            mock.patch.object(pipeline, "LANGUAGES", ("en",)),
+                            mock.patch.object(generate_espeak_ipa, "resolve_espeak", return_value=str(engine)),
+                            self.assertRaisesRegex(RuntimeError, "injected report failure"),
+                        ):
+                            pipeline.build(args)
+                    else:
+                        with self.assertRaisesRegex(OSError, "injected report failure"):
+                            generate_espeak_ipa.process_language(str(engine), root, "en", 10)
+                self.assertEqual({path: path.read_bytes() for path in previous}, previous)
+                self.assertFalse(list(root.rglob("*.part")))
+
     def test_generates_one_json_ipa_row_per_word_for_all_languages(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             outdir = Path(temp_dir)
