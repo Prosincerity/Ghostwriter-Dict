@@ -311,9 +311,6 @@ def create_staging_database(path: Path) -> sqlite3.Connection:
                 source TEXT NOT NULL, word TEXT NOT NULL, ipa TEXT NOT NULL,
                 position INTEGER NOT NULL, PRIMARY KEY (source, word, ipa)
             ) WITHOUT ROWID;
-            CREATE TABLE regeneration (
-                word TEXT PRIMARY KEY, position INTEGER NOT NULL
-            ) WITHOUT ROWID;
             CREATE TABLE comparison_requests (
                 word TEXT PRIMARY KEY, position INTEGER NOT NULL
             ) WITHOUT ROWID;
@@ -422,7 +419,7 @@ def clean_ipa_wordlists(
                             (source, word, ipa, position))
 
         def reject(source: str, word: str, ipa: str, reason: str,
-                   details: dict[str, object], position: int) -> None:
+                   details: dict[str, object]) -> None:
             nonlocal rejection_position
             rejection_position += 1
             staging.execute(
@@ -433,16 +430,13 @@ def clean_ipa_wordlists(
             )
             rejection_reasons[reason] += 1
             counts["rejected_candidates"] += 1
-            if source == "wiktionary":
-                staging.execute("INSERT OR IGNORE INTO regeneration VALUES (?, ?)",
-                                (word, position))
 
         if repair_requests is not None:
             with repair_requests.open(encoding="utf-8") as requests:
                 for position, line in enumerate(requests):
                     word, ipa, rejection = json.loads(line)
                     reject("wiktionary", word, ipa, rejection["reason"],
-                           rejection.get("details", {}), position)
+                           rejection.get("details", {}))
                     staging.execute("INSERT OR IGNORE INTO comparison_requests VALUES (?, ?)",
                                     (word, position))
 
@@ -480,13 +474,13 @@ def clean_ipa_wordlists(
                                     transformation_reasons.update(transformations)
                                 for item in rejected:
                                     reject(source_name, word, ipa, str(item["reason"]),
-                                           item.get("details", {}), line_number)
+                                           item.get("details", {}))
                                 for candidate in normalized:
                                     if source_name == "wiktionary" and not any(
                                         marker in candidate for marker in STRESS_MARKERS
                                     ):
                                         reject(source_name, word, ipa, "missing_stress_mark",
-                                               {"candidate": candidate}, line_number)
+                                               {"candidate": candidate})
                                     else:
                                         stage_ipa(source_name, word, candidate)
                             if line_number % 1_000 == 0:
@@ -496,10 +490,9 @@ def clean_ipa_wordlists(
                 scan_progress.finish()
 
             staging.commit()
-            regeneration_count = staging.execute(
-                "SELECT COUNT(*) FROM regeneration"
+            counts["regeneration_requested_words"] = staging.execute(
+                "SELECT COUNT(DISTINCT word) FROM rejected WHERE source = 'wiktionary'"
             ).fetchone()[0]
-            counts["regeneration_requested_words"] = regeneration_count
             comparison_count = staging.execute(
                 "SELECT COUNT(*) FROM comparison_requests"
             ).fetchone()[0]
@@ -516,7 +509,8 @@ def clean_ipa_wordlists(
                 for word, raw_ipa in zip(words, generated):
                     normalized, transformations, rejected = clean_pronunciation(raw_ipa, lang_code)
                     needs_regeneration = staging.execute(
-                        "SELECT 1 FROM regeneration WHERE word = ?", (word,)
+                        "SELECT 1 FROM rejected WHERE source = 'wiktionary' AND word = ? LIMIT 1",
+                        (word,),
                     ).fetchone() is not None
                     if needs_regeneration:
                         if normalized:
@@ -525,7 +519,7 @@ def clean_ipa_wordlists(
                             counts["regenerated_words"] += 1
                         else:
                             reject("espeak", word, raw_ipa, "espeak_generation_invalid",
-                                   {"validation_reasons": [item["reason"] for item in rejected]}, processed)
+                                   {"validation_reasons": [item["reason"] for item in rejected]})
                             counts["regeneration_failed_words"] += 1
                             if not staging.execute(
                                 "SELECT 1 FROM words WHERE source IN ('wiktionary', 'espeak') AND word=?", (word,)

@@ -190,8 +190,7 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
             CREATE TABLE words (word TEXT PRIMARY KEY, position INTEGER NOT NULL) WITHOUT ROWID;
             CREATE TABLE ipas (word TEXT NOT NULL, ipa TEXT NOT NULL, position INTEGER NOT NULL,
                                PRIMARY KEY (word, ipa)) WITHOUT ROWID;
-            CREATE TABLE rejects (reason TEXT NOT NULL, word TEXT NOT NULL,
-                                  entry TEXT NOT NULL, position INTEGER NOT NULL);
+            CREATE TABLE rejects (reason TEXT NOT NULL, entry TEXT NOT NULL, position INTEGER NOT NULL);
         """)
         bytes_processed = 0
         ipa_position = 0
@@ -220,8 +219,8 @@ def clean_wordlist(input_path: Path, output_path: Path, lang_code: str) -> dict[
                         "policy_version": POLICY_VERSION,
                     }
                     staging.execute(
-                        "INSERT INTO rejects VALUES (?, ?, ?, ?)",
-                        (rejection["reason"], word,
+                        "INSERT INTO rejects VALUES (?, ?, ?)",
+                        (rejection["reason"],
                          json.dumps(entry, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
                          line_number),
                     )
