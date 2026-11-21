@@ -113,7 +113,7 @@ class PronunciationCleanupTest(unittest.TestCase):
         self.assertEqual(len(self.clean(plain)[0]), 9)
 
     def test_stress_mark_requires_a_following_syllabic_nucleus(self):
-        for ipa in ("/ˈb/", "/abˈc/", "/aˌ/"):
+        for ipa in ("/ˈb/", "/abˈc/", "/aˌ/", "/ˈbˌa/", "/ˈˌa/"):
             with self.subTest(ipa=ipa):
                 valid, _, rejects = self.clean(ipa)
                 self.assertEqual(valid, [])

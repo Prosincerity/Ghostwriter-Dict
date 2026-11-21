@@ -27,7 +27,19 @@ def rows(path):
 
 class PhonemeComparisonTest(unittest.TestCase):
     def test_stressed_syllabic_consonant_has_a_rhyme_tail(self):
-        self.assertEqual(IPA.stressed_rhyme_tail("/ˈn̩t/", "en"), ["n̩", "t"])
+        comparison = IPA.compare_pronunciations("/ˈn̩t/", "n̩t", "en")
+        self.assertEqual(comparison["wiktionary_rhyme_tail"], ["n̩", "t"])
+        self.assertEqual(comparison["espeak_rhyme_tail"], [])
+        self.assertFalse(comparison["rhyme_tail_matches"])
+
+    def test_last_stress_selects_the_tail_and_tone_does_not_count_as_a_phoneme(self):
+        comparison = IPA.compare_pronunciations("/ˌbaˈtʃiː˥t/", "tʃˈiːt", "en")
+        self.assertEqual(comparison, {
+            "phoneme_edits": 2, "phoneme_distance_ratio": 2 / 5,
+            "wiktionary_phoneme_count": 5, "espeak_phoneme_count": 3,
+            "wiktionary_rhyme_tail": ["iː", "t"], "espeak_rhyme_tail": ["iː", "t"],
+            "rhyme_tail_matches": True,
+        })
 
     def test_compares_complete_tokens_and_reports_rhyme_tail(self):
         same = IPA.compare_pronunciations("/ˈkæt/", "ˈkæt", "en")

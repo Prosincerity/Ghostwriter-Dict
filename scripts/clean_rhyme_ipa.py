@@ -95,8 +95,6 @@ def expand_optional_groups(value: str) -> tuple[list[str], list[str]]:
 def validate_delimiters(value: str) -> bool:
     wrapped = wrapper(value)
     body = wrapped[2] if wrapped else value
-    if wrapped is None and any(character in "/[]" for character in value):
-        return False
     return not any(character in "/[]" for character in body)
 
 
@@ -104,6 +102,18 @@ def is_syllabic_nucleus(token: str, lang_code: str) -> bool:
     return token_is_vowel(token, lang_code) or any(
         mark in token for mark in ("\u0329", "\u030d")
     )
+
+
+def has_misplaced_stress(tokens: list[str], lang_code: str) -> bool:
+    needs_nucleus = False
+    for token in tokens:
+        if token in STRESS_MARKERS:
+            if needs_nucleus:
+                return True
+            needs_nucleus = True
+        elif needs_nucleus and is_syllabic_nucleus(token, lang_code):
+            needs_nucleus = False
+    return needs_nucleus
 
 
 def clean_pronunciation(
@@ -170,21 +180,8 @@ def clean_pronunciation(
                 token not in NON_PHONEME_MARKERS for token in tokens
             ):
                 reason = "empty_pronunciation"
-            else:
-                for index, token in enumerate(tokens):
-                    if token not in STRESS_MARKERS:
-                        continue
-                    following = tokens[index + 1:]
-                    next_stress = next(
-                        (offset for offset, value in enumerate(following)
-                         if value in STRESS_MARKERS), len(following)
-                    )
-                    if not any(
-                        is_syllabic_nucleus(value, lang_code)
-                        for value in following[:next_stress]
-                    ):
-                        reason = "misplaced_stress_mark"
-                        break
+            elif has_misplaced_stress(tokens, lang_code):
+                reason = "misplaced_stress_mark"
         if reason:
             rejects.append({"reason": reason, "details": details})
         else:
@@ -193,13 +190,14 @@ def clean_pronunciation(
     return list(dict.fromkeys(valid)), list(dict.fromkeys(transformations)), rejects
 
 
-def phoneme_tokens(ipa: str, lang_code: str) -> list[str]:
-    """Get only complete phoneme tokens; never lose an unknown symbol."""
+def comparison_tokens(ipa: str, lang_code: str) -> tuple[list[str], list[str]]:
+    """Return the phoneme sequence and its last stressed rhyme tail."""
     unknown: Counter[str] = Counter()
     tokens = tokenize_ipa(ipa, lang_code, unknown)
     if unknown:
         raise ValueError(f"unrecognized IPA tokens: {dict(sorted(unknown.items()))}")
-    return [token for token in tokens if token not in NON_PHONEME_MARKERS]
+    phonemes = [token for token in tokens if token not in NON_PHONEME_MARKERS]
+    return phonemes, stressed_rhyme_tail(tokens, lang_code)
 
 
 def phoneme_edit_distance(left: list[str], right: list[str]) -> int:
@@ -219,12 +217,8 @@ def phoneme_edit_distance(left: list[str], right: list[str]) -> int:
     return previous[-1]
 
 
-def stressed_rhyme_tail(ipa: str, lang_code: str) -> list[str]:
+def stressed_rhyme_tail(tokens: list[str], lang_code: str) -> list[str]:
     """Return phonemes from the last stressed vowel through the word's end."""
-    unknown: Counter[str] = Counter()
-    tokens = tokenize_ipa(ipa, lang_code, unknown)
-    if unknown:
-        raise ValueError(f"unrecognized IPA tokens: {dict(sorted(unknown.items()))}")
     stress_positions = [index for index, token in enumerate(tokens) if token in STRESS_MARKERS]
     if not stress_positions:
         return []
@@ -237,12 +231,10 @@ def stressed_rhyme_tail(ipa: str, lang_code: str) -> list[str]:
 def compare_pronunciations(wiktionary_ipa: str, espeak_ipa: str,
                            lang_code: str) -> dict[str, object]:
     """Score phoneme divergence and expose the stressed rhyme tails separately."""
-    wiktionary_tokens = phoneme_tokens(wiktionary_ipa, lang_code)
-    espeak_tokens = phoneme_tokens(espeak_ipa, lang_code)
+    wiktionary_tokens, wiktionary_tail = comparison_tokens(wiktionary_ipa, lang_code)
+    espeak_tokens, espeak_tail = comparison_tokens(espeak_ipa, lang_code)
     edits = phoneme_edit_distance(wiktionary_tokens, espeak_tokens)
     denominator = max(len(wiktionary_tokens), len(espeak_tokens))
-    wiktionary_tail = stressed_rhyme_tail(wiktionary_ipa, lang_code)
-    espeak_tail = stressed_rhyme_tail(espeak_ipa, lang_code)
     return {
         "phoneme_edits": edits,
         "phoneme_distance_ratio": edits / denominator if denominator else 0.0,
